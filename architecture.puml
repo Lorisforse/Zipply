@@ -1,0 +1,67 @@
+@startuml Ziply_Architecture_Formal
+
+skinparam componentStyle uml2
+skinparam backgroundColor white
+skinparam component {
+    BackgroundColor #EAF4FB
+    BorderColor #2E86C1
+    FontSize 12
+}
+
+title Ziply — Diagramma delle Componenti (Sprint 0)
+
+' ─── COMPONENTS ───
+component "Ziply Mobile App\n(Flutter iOS/Android)" as MobileApp
+component "Ziply Web Dashboard\n(Flutter Web)" as WebDash
+component "Ziply Backend\n(Go — API REST)" as Backend
+component "PostgreSQL" as DB <<database>>
+component "OpenStreetMap\n(flutter_map)" as OSM <<external>>
+component "OpenRouteService API" as ORS <<external>>
+component "Firebase Cloud Messaging" as FCM <<external>>
+component "Payment Gateway" as PayMock <<mock>>
+component "IoT Vehicle Interface" as IoTMock <<mock>>
+
+' ─── PROVIDED INTERFACES (lollipop) ───
+interface "IMapTiles" as IMapTiles
+interface "IRouteCalc" as IRouteCalc
+interface "IPushNotify" as IPushNotify
+interface "IPayment" as IPayment
+interface "IVehicleControl" as IVehicleControl
+interface "IRestMobile" as IRestMobile
+interface "IRestWeb" as IRestWeb
+interface "IDataStore" as IDataStore
+
+' ─── CONNECTIONS ───
+' Mobile consuma REST dal Backend
+MobileApp --( IRestMobile
+IRestMobile -- Backend
+
+' Web Dashboard consuma REST dal Backend
+WebDash --( IRestWeb
+IRestWeb -- Backend
+
+' Backend consuma DataStore da PostgreSQL
+Backend --( IDataStore
+IDataStore -- DB
+
+' Mobile consuma tile da OpenStreetMap
+MobileApp --( IMapTiles
+IMapTiles -- OSM
+
+' Backend consuma routing da OpenRouteService
+Backend --( IRouteCalc
+IRouteCalc -- ORS
+
+' Backend consuma notifiche da FCM
+Backend --( IPushNotify
+IPushNotify -- FCM
+
+' Backend consuma pagamenti dal mock
+Backend --( IPayment
+IPayment -- PayMock
+
+' Backend consuma IoT dal mock
+Backend --( IVehicleControl
+IVehicleControl -- IoTMock
+
+@enduml
