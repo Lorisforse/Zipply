@@ -1,0 +1,56 @@
+name: ziply_app
+description: Ziply - Sistema di Smart Mobility Urbana.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+  flutter: '>=3.19.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Mappe OpenStreetMap
+  flutter_map: ^7.0.2
+
+  # Coordinate geografiche
+  latlong2: ^0.9.1
+
+  # Client HTTP
+  dio: ^5.7.0
+
+  # Storage sicuro per JWT
+  flutter_secure_storage: ^9.2.2
+
+  # Routing dichiarativo
+  go_router: ^14.6.2
+
+  # State management
+  provider: ^6.1.2
+
+  # QR code scanner
+  mobile_scanner: ^6.0.0
+
+  # Geolocalizzazione
+  geolocator: ^13.0.2
+
+  # Gestione permessi
+  permission_handler: ^11.3.1
+
+  # SVG rendering
+  flutter_svg: ^2.0.10
+
+  # Font Google (Barlow / Barlow Condensed)
+  google_fonts: ^6.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/scooter.svg
