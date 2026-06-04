@@ -12,6 +12,7 @@ services:
       - DB_PASSWORD=ziply_password
       - JWT_SECRET=change_me_in_production
       - GIN_MODE=release
+      - PORT=8080
     depends_on:
       ziply_db:
         condition: service_healthy
