@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:ziply_app/presentation/mobile/map/map_screen.dart';
+import 'package:ziply_app/services/auth_service.dart';
 
 // ── Palette ──────────────────────────────────────────────────────────────────
 const Color _kBg      = Color(0xFF1A1A1A);
@@ -36,6 +38,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final _pass     = TextEditingController();
   final _passConf = TextEditingController(); // fix #4 – conferma password
 
+  final AuthService _authService = AuthService();
+  bool _isLoading = false;
+  String? _apiError;
+
   Map<String, String?> _errors = {};
 
   @override
@@ -49,10 +55,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _switchMode(bool login) {
-    if (_isLogin == login) return;
+    if (_isLogin == login || _isLoading) return;
     setState(() {
       _isLogin       = login;
       _errors        = {};
+      _apiError      = null;
       _showPass      = false;
       _showPassConf  = false;
     });
@@ -60,26 +67,62 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _emailValid(String s) => RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(s);
 
-  void _submit() {
+  Future<void> _submit() async {
     final e = <String, String?>{};
     if (!_isLogin) {
       if (_nome.text.trim().isEmpty)    e['nome']    = '!';
       if (_cognome.text.trim().isEmpty) e['cognome'] = '!';
     }
-    if (_email.text.trim().isEmpty)     e['email'] = 'Inserisci la tua email';
-    else if (!_emailValid(_email.text)) e['email'] = 'Email non valida';
+    if (_email.text.trim().isEmpty) {
+      e['email'] = 'Inserisci la tua email';
+    } else if (!_emailValid(_email.text)) {
+      e['email'] = 'Email non valida';
+    }
 
-    if (_pass.text.isEmpty)             e['pass'] = 'Inserisci la password';
-    else if (_pass.text.length < 6)     e['pass'] = 'Almeno 6 caratteri';
+    if (_pass.text.isEmpty) {
+      e['pass'] = 'Inserisci la password';
+    } else if (_pass.text.length < 8) {
+      e['pass'] = 'Almeno 8 caratteri';
+    }
 
     // fix #4 – validazione conferma password
     if (!_isLogin) {
-      if (_passConf.text.isEmpty)               e['passConf'] = 'Conferma la password';
-      else if (_passConf.text != _pass.text)    e['passConf'] = 'Le password non coincidono';
+      if (_passConf.text.isEmpty) {
+        e['passConf'] = 'Conferma la password';
+      } else if (_passConf.text != _pass.text) {
+        e['passConf'] = 'Le password non coincidono';
+      }
     }
 
-    setState(() => _errors = e);
-    // TODO: invocare il repository di autenticazione se _errors.isEmpty
+    setState(() {
+      _errors   = e;
+      _apiError = null;
+    });
+    if (e.isNotEmpty) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final data = _isLogin
+          ? await _authService.login(_email.text.trim(), _pass.text)
+          : await _authService.register(
+              _nome.text.trim(),
+              _cognome.text.trim(),
+              _email.text.trim(),
+              _pass.text,
+            );
+      await _authService.saveToken(data['token'] as String);
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MapScreen()),
+        (route) => false,
+      );
+    } on Exception catch (err) {
+      debugPrint('auth failed: $err');
+      if (!mounted) return;
+      setState(() => _apiError = err.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _clearError(String key) {
@@ -126,10 +169,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         end: Alignment.bottomLeft,
                         stops: const [0, 0.28, 0.58, 0.84],
                         colors: [
-                          _kAccent.withOpacity(0.45),
-                          _kAccent.withOpacity(0.26),
-                          _kAccent.withOpacity(0.08),
-                          _kAccent.withOpacity(0),
+                          _kAccent.withValues(alpha: 0.45),
+                          _kAccent.withValues(alpha: 0.26),
+                          _kAccent.withValues(alpha: 0.08),
+                          _kAccent.withValues(alpha: 0),
                         ],
                       ),
                     ),
@@ -145,7 +188,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 4),
                         Text(
                           'Muoviti. Ovunque.',
-                          style: _body(size: 13, c: Colors.white.withOpacity(0.65)),
+                          style: _body(size: 13, c: Colors.white.withValues(alpha: 0.65)),
                         ),
                         Expanded(
                           child: Padding(
@@ -233,7 +276,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   _Field(
                     label: 'Password',
                     controller: _pass,
-                    placeholder: _isLogin ? 'La tua password' : 'Almeno 6 caratteri',
+                    placeholder: _isLogin ? 'La tua password' : 'Almeno 8 caratteri',
                     obscure: !_showPass,
                     autoComplete: _isLogin ? 'current-password' : 'new-password',
                     error: _errors['pass'],
@@ -280,20 +323,40 @@ class _LoginScreenState extends State<LoginScreen> {
                   SizedBox(
                     height: 52,
                     child: ElevatedButton(
-                      onPressed: _submit,
+                      onPressed: _isLoading ? null : _submit,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _kAccent,
                         foregroundColor: _kBg,
+                        disabledBackgroundColor: _kAccent,
                         elevation: 0,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(4)),
                       ),
-                      child: Text(
-                        _isLogin ? 'ACCEDI' : 'CREA ACCOUNT',
-                        style: _cond(size: 19, ls: 1.5, c: _kBg),
-                      ),
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: _kBg,
+                              ),
+                            )
+                          : Text(
+                              _isLogin ? 'ACCEDI' : 'CREA ACCOUNT',
+                              style: _cond(size: 19, ls: 1.5, c: _kBg),
+                            ),
                     ),
                   ),
+
+                  // errore API sotto il pulsante principale
+                  if (_apiError != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _apiError!,
+                      textAlign: TextAlign.center,
+                      style: _body(size: 13, c: _kAccent),
+                    ),
+                  ],
                   const SizedBox(height: 18),
 
                   // divider "oppure"
@@ -459,7 +522,7 @@ class _Field extends StatelessWidget {
 
 // ── Google "G" multicolor icon ────────────────────────────────────────────────
 class _GoogleGIcon extends StatelessWidget {
-  const _GoogleGIcon({super.key, this.size = 18});
+  const _GoogleGIcon({this.size = 18});
   final double size;
 
   static const String _svg = '''

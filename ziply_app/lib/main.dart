@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
+import 'package:ziply_app/presentation/mobile/map/map_screen.dart';
+import 'package:ziply_app/services/auth_service.dart';
 
 // Logica di piattaforma:
 //   - Mobile (iOS / Android) → UI mobile per utenti finali
 //   - Web                    → UI web per operatori e amministratori pubblici
 //
-// Per ora viene mostrata la LoginScreen mobile su entrambe le piattaforme;
+// Per ora viene mostrata la UI mobile su entrambe le piattaforme;
 // il routing condizionale verrà implementato quando sarà pronta la UI web.
 
 void main() {
@@ -25,9 +27,9 @@ class ZiplyApp extends StatelessWidget {
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF1A1A1A),
-        colorScheme: ColorScheme.dark(
-          primary: const Color(0xFFF69659),
-          surface: const Color(0xFF252525),
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFFF69659),
+          surface: Color(0xFF252525),
         ),
         splashFactory: NoSplash.splashFactory,
         highlightColor: Colors.transparent,
@@ -37,7 +39,40 @@ class ZiplyApp extends StatelessWidget {
           ? const Scaffold(
               body: Center(child: Text('Web UI — coming soon')),
             )
-          : const LoginScreen(),
+          : const AuthGate(),
+    );
+  }
+}
+
+/// Decide la schermata iniziale in base alla presenza del token JWT salvato:
+/// token presente → MapScreen, assente → LoginScreen.
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  final AuthService _authService = AuthService();
+  late final Future<String?> _tokenFuture = _authService.getToken();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<String?>(
+      future: _tokenFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          // Schermo nero minimale durante il check del token.
+          return const Scaffold(
+            backgroundColor: Color(0xFF1A1A1A),
+            body: SizedBox.shrink(),
+          );
+        }
+        final token = snapshot.data;
+        final isLoggedIn = token != null && token.isNotEmpty;
+        return isLoggedIn ? const MapScreen() : const LoginScreen();
+      },
     );
   }
 }

@@ -19,6 +19,7 @@ dependencies:
 
   # Client HTTP
   dio: ^5.7.0
+  http: ^1.2.0
 
   # Storage sicuro per JWT
   flutter_secure_storage: ^9.2.2

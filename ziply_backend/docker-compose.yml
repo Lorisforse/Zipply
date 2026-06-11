@@ -1,40 +1,24 @@
 services:
-  ziply_backend:
-    build: .
-    container_name: ziply_backend
+  backend:
+    image: ghcr.io/lorisforse/zipply-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ziply-backend
+    restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8081:8080"
     environment:
-      - DB_HOST=ziply_db
+      - DB_HOST=ziply-postgres
       - DB_PORT=5432
       - DB_NAME=ziply_db
-      - DB_USER=ziply_user
+      - DB_USER=ziply
       - DB_PASSWORD=ziply_password
-      - JWT_SECRET=change_me_in_production
-      - GIN_MODE=release
-      - PORT=8080
-    depends_on:
-      ziply_db:
-        condition: service_healthy
-    restart: unless-stopped
+      - JWT_SECRET=ziply_jwt_secret_dev
+      - SERVER_PORT=8080
+    networks:
+      - ziply-net
 
-  ziply_db:
-    image: postgres:15-alpine
-    container_name: ziply_db
-    ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_DB=ziply_db
-      - POSTGRES_USER=ziply_user
-      - POSTGRES_PASSWORD=ziply_password
-    volumes:
-      - ziply_db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ziply_user -d ziply_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-volumes:
-  ziply_db_data:
+networks:
+  ziply-net:
+    external: true

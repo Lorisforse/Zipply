@@ -1,14 +1,16 @@
+// Package database manages the PostgreSQL connection pool.
 package database
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"os"
 
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func Connect() (*sql.DB, error) {
+// Connect opens a pgx connection pool using the DB_* environment variables and verifies it with a ping.
+func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		os.Getenv("DB_HOST"),
@@ -18,17 +20,15 @@ func Connect() (*sql.DB, error) {
 		os.Getenv("DB_NAME"),
 	)
 
-	db, err := sql.Open("postgres", dsn)
+	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := db.Ping(); err != nil {
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
 		return nil, err
 	}
 
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(5)
-
-	return db, nil
+	return pool, nil
 }

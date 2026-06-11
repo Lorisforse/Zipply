@@ -7,7 +7,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o ziply_backend ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o ziply_backend ./cmd/server
 
 # Runtime stage
 FROM alpine:3.19

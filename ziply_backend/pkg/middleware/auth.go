@@ -1,41 +1,64 @@
+// Package middleware provides the HTTP middleware shared across the API.
 package middleware
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
-	"github.com/gin-gonic/gin"
-	"github.com/lorisforse/ziply_backend/pkg/utils"
+	"github.com/lorisforse/ziply_backend/pkg/jwt"
 )
 
-func JWTAuthMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		header := c.GetHeader("Authorization")
+// contextKey is a private type that avoids context key collisions.
+type contextKey string
+
+// Context keys under which the authenticated identity is stored.
+const (
+	CtxUserID contextKey = "user_id"
+	CtxEmail  contextKey = "email"
+	CtxRuolo  contextKey = "ruolo"
+)
+
+// JWTAuth rejects requests without a valid Bearer token and stores the claims in the request context.
+func JWTAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		header := r.Header.Get("Authorization")
 		if !strings.HasPrefix(header, "Bearer ") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token mancante"})
+			writeError(w, http.StatusUnauthorized, "token mancante")
 			return
 		}
-		claims, err := utils.ValidateToken(strings.TrimPrefix(header, "Bearer "))
+		claims, err := jwt.ValidateToken(strings.TrimPrefix(header, "Bearer "))
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token non valido"})
+			writeError(w, http.StatusUnauthorized, "token non valido")
 			return
 		}
-		c.Set("user_id", claims.UserID)
-		c.Set("email", claims.Email)
-		c.Set("ruolo", claims.Ruolo)
-		c.Next()
+		ctx := context.WithValue(r.Context(), CtxUserID, claims.Subject)
+		ctx = context.WithValue(ctx, CtxEmail, claims.Email)
+		ctx = context.WithValue(ctx, CtxRuolo, claims.Ruolo)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// RequireRole allows the request only when the authenticated role matches one of the given roles.
+func RequireRole(roles ...string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ruolo, _ := r.Context().Value(CtxRuolo).(string)
+			for _, role := range roles {
+				if role == ruolo {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			writeError(w, http.StatusForbidden, "permessi insufficienti")
+		})
 	}
 }
 
-func RoleMiddleware(roles ...string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ruolo, _ := c.Get("ruolo")
-		for _, r := range roles {
-			if r == ruolo.(string) {
-				c.Next()
-				return
-			}
-		}
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "permessi insufficienti"})
-	}
+// writeError serializes a JSON error payload with the given status code.
+func writeError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
