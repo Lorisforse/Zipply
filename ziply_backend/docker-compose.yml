@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ghcr.io/lorisforse/zipply-backend:latest
+    image: ziply-backend:latest
     build:
       context: .
       dockerfile: Dockerfile
@@ -8,17 +8,18 @@ services:
     restart: unless-stopped
     ports:
       - "8081:8080"
-    environment:
-      - DB_HOST=ziply-postgres
-      - DB_PORT=5432
-      - DB_NAME=ziply_db
-      - DB_USER=ziply
-      - DB_PASSWORD=ziply_password
-      - JWT_SECRET=ziply_jwt_secret_dev
-      - SERVER_PORT=8080
+    # I valori vengono dal file .env iniettato dalla credenziale Jenkins
+    # 'ziply-backend-env' (NON committare .env: vedi .gitignore).
+    env_file:
+      - .env
     networks:
-      - ziply-net
+      # Rete del database (Postgres ziply-postgres).
+      - db_ziply-net
+      # Rete del reverse proxy nginx: necessaria perché nginx raggiunga il backend.
+      - nefta_webnet
 
 networks:
-  ziply-net:
+  db_ziply-net:
+    external: true
+  nefta_webnet:
     external: true

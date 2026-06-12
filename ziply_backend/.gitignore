@@ -1,0 +1,6 @@
+# Segreti runtime: iniettati dalla credenziale Jenkins 'ziply-backend-env'.
+.env
+
+# Artefatti di build Go
+/ziply_backend
+*.exe
