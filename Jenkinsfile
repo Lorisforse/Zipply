@@ -14,8 +14,10 @@ pipeline {
         BRANCH            = 'main'
         APP_SUBDIR        = 'ziply_backend'
         ENV_CREDENTIAL_ID = 'ziply-backend-env'
-        // Porta host del backend: si verifica in diretta, bypassando nginx.
-        SMOKE_URL         = 'http://localhost:8081/vehicles'
+        // URL interno del backend (porta del container). La verifica gira da un
+        // container effimero che condivide la rete del backend: Jenkins è isolato
+        // e NON vedrebbe la porta 8081 pubblicata sull'host.
+        SMOKE_URL         = 'http://localhost:8080/vehicles'
     }
 
     options {
@@ -99,8 +101,10 @@ pipeline {
 
                 # La route /vehicles è protetta da JWT: 401 senza token prova che
                 # il nuovo build è online e la route registrata (un 404 = codice vecchio).
+                # Il curl gira in un container che CONDIVIDE la rete del backend
+                # (--network container:ziply-backend) → localhost:8080 è il backend.
                 for i in $(seq 1 10); do
-                  CODE=$(curl -s -o /dev/null -w '%{http_code}' "$SMOKE_URL" || true)
+                  CODE=$(docker run --rm --network "container:ziply-backend" curlimages/curl:latest -s -o /dev/null -w '%{http_code}' "$SMOKE_URL" || true)
                   echo "Tentativo $i: HTTP $CODE su /vehicles"
                   if [ "$CODE" = "401" ]; then
                     echo "OK: /vehicles registrata."

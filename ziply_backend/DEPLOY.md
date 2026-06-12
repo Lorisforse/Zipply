@@ -77,9 +77,14 @@ userebbe il vecchio compose con la rete sbagliata.
 
 ## Troubleshooting
 
-- **App a 404 su `/vehicles` dopo deploy ok** → lo smoke test su `localhost:8081`
-  passa ma nginx no: il proxy non instrada `/ziply/api/vehicles`. Aggiungi al
-  proxy una location catch-all `/ziply/api/` → `ziply-backend:8080` e ricarica.
+- **Smoke test che dà `HTTP 000`** → il `curl` non gira sull'host ma dentro il
+  container Jenkins, dove `localhost:8081` non esiste. La verifica deve girare in
+  un container che condivide la rete del backend:
+  `docker run --rm --network container:ziply-backend curlimages/curl:latest -s -o /dev/null -w '%{http_code}' http://localhost:8080/vehicles`
+  (porta **interna** 8080, non la 8081 dell'host). Già applicato nel Jenkinsfile.
+- **App a 404 su `/vehicles` dopo deploy ok** → il backend è online ma nginx non
+  instrada `/ziply/api/vehicles`. Aggiungi al proxy una location catch-all
+  `/ziply/api/` → `ziply-backend:8080` e ricarica.
 - **502 dopo deploy** → il container non è su `nefta_webnet`. Verifica con
   `docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' ziply-backend`:
   devono comparire `db_ziply-net` e `nefta_webnet`.
