@@ -9,7 +9,6 @@ import 'package:ziply_app/services/auth_service.dart';
 //   - Web                    → UI web per operatori e amministratori pubblici
 //
 // Per ora viene mostrata la UI mobile su entrambe le piattaforme;
-// il routing condizionale verrà implementato quando sarà pronta la UI web.
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
