@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:ziply_app/data/models/booking_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
+import 'package:ziply_app/services/booking_service.dart';
 
 // ── Palette (da Grafica/mappa-handoff) ─────────────────────────────────────
 const Color _kBg      = Color(0xFF1A1A1A);
@@ -13,10 +15,24 @@ const Color _kDim     = Color(0xFF777777);
 const Color _kAccent  = Color(0xFFF69659);
 const Color _kGreen   = Color(0xFF5DCAA5);
 
-/// [MOBILE] UT.05 — Scheda mezzo.
-/// Bottom sheet informativo aperto al tap su un marker: mostra tipo, batteria,
-/// tariffa e distanza dall'utente. Nessuna logica di prenotazione (→ UT.02).
-class VehicleBottomSheet extends StatelessWidget {
+/// Esito del flusso di prenotazione restituito da [VehicleBottomSheet.show]:
+/// [booking] valorizzato in caso di successo, [error] in caso di fallimento.
+class VehicleBookingResult {
+  const VehicleBookingResult.success(BookingModel this.booking) : error = null;
+  const VehicleBookingResult.failure(String this.error) : booking = null;
+
+  final BookingModel? booking;
+  final String? error;
+
+  bool get isSuccess => booking != null;
+}
+
+/// [MOBILE] UT.05 + UT.02 — Scheda mezzo e avvio prenotazione.
+/// Bottom sheet aperto al tap su un marker: mostra tipo, batteria, tariffa e
+/// distanza dall'utente, e consente di prenotare il mezzo. La chiamata a
+/// POST /bookings è gestita qui (con loading sul pulsante); l'esito viene
+/// restituito al chiamante via [Navigator.pop] come [VehicleBookingResult].
+class VehicleBottomSheet extends StatefulWidget {
   const VehicleBottomSheet({
     super.key,
     required this.vehicle,
@@ -31,12 +47,13 @@ class VehicleBottomSheet extends StatelessWidget {
 
   /// Apre la scheda come modal bottom sheet: si chiude con swipe verso il
   /// basso o tap fuori (comportamento di default di [showModalBottomSheet]).
-  static Future<void> show(
+  /// Restituisce l'esito della prenotazione, o null se l'utente la chiude.
+  static Future<VehicleBookingResult?> show(
     BuildContext context,
     VehicleModel vehicle,
     LatLng? userPosition,
   ) {
-    return showModalBottomSheet<void>(
+    return showModalBottomSheet<VehicleBookingResult>(
       context: context,
       backgroundColor: Colors.transparent,
       barrierColor: const Color(0x8C000000), // rgba(0,0,0,0.55)
@@ -48,7 +65,36 @@ class VehicleBottomSheet extends StatelessWidget {
   }
 
   @override
+  State<VehicleBottomSheet> createState() => _VehicleBottomSheetState();
+}
+
+class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
+  final BookingService _bookingService = BookingService();
+  bool _isBooking = false;
+
+  /// Avvia la prenotazione mostrando il loading sul pulsante, poi chiude la
+  /// scheda restituendone l'esito al chiamante (la mappa).
+  Future<void> _book() async {
+    setState(() => _isBooking = true);
+    final navigator = Navigator.of(context);
+
+    VehicleBookingResult result;
+    try {
+      final booking = await _bookingService.createBooking(widget.vehicle.id);
+      result = VehicleBookingResult.success(booking);
+    } on Exception catch (e) {
+      result = VehicleBookingResult.failure(
+        e.toString().replaceFirst('Exception: ', ''),
+      );
+    }
+
+    if (!mounted) return; // scheda già chiusa dall'utente durante la chiamata
+    navigator.pop(result);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final vehicle = widget.vehicle;
     final title = vehicle.type.isEmpty ? 'Mezzo' : vehicle.type;
     final rateText =
         '${(vehicle.hourlyRate / 60).toStringAsFixed(2).replaceAll('.', ',')} €';
@@ -129,6 +175,42 @@ class VehicleBottomSheet extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 20),
+              // CTA prenotazione (UT.02).
+              SizedBox(
+                height: 52,
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isBooking ? null : _book,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kAccent,
+                    foregroundColor: _kBg,
+                    disabledBackgroundColor: _kAccent,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  child: _isBooking
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: _kBg,
+                          ),
+                        )
+                      : Text(
+                          'PRENOTA',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.5,
+                            color: _kBg,
+                          ),
+                        ),
+                ),
+              ),
             ],
           ),
         ),
@@ -139,14 +221,14 @@ class VehicleBottomSheet extends StatelessWidget {
   /// Calcola distanza (Haversine via geolocator) e stima a piedi.
   /// Restituisce (valore, secondario). Senza posizione utente → («—», null).
   (String, String?) _distanceLabels() {
-    final pos = userPosition;
+    final pos = widget.userPosition;
     if (pos == null) return ('—', null);
 
     final meters = Geolocator.distanceBetween(
       pos.latitude,
       pos.longitude,
-      vehicle.latitude,
-      vehicle.longitude,
+      widget.vehicle.latitude,
+      widget.vehicle.longitude,
     );
 
     final String value;

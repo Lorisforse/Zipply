@@ -1,0 +1,77 @@
+package handler
+
+import (
+	"encoding/json"
+	"errors"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/lorisforse/ziply_backend/internal/domain"
+	"github.com/lorisforse/ziply_backend/internal/usecase"
+	"github.com/lorisforse/ziply_backend/pkg/middleware"
+)
+
+// BookingHandler handles the /bookings HTTP endpoints.
+type BookingHandler struct {
+	bookings *usecase.BookingUsecase
+}
+
+// NewBookingHandler creates a BookingHandler backed by the given usecase.
+func NewBookingHandler(bookings *usecase.BookingUsecase) *BookingHandler {
+	return &BookingHandler{bookings: bookings}
+}
+
+// createBookingRequest mirrors the JSON body of POST /bookings.
+type createBookingRequest struct {
+	VehicleID string `json:"vehicle_id"`
+}
+
+// bookingResponse is the JSON shape of a created booking.
+type bookingResponse struct {
+	ID        string `json:"id"`
+	VehicleID string `json:"vehicle_id"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+// createBookingResponse wraps the created booking.
+type createBookingResponse struct {
+	Booking bookingResponse `json:"booking"`
+}
+
+// Create handles POST /bookings, reserving the given vehicle for the authenticated user.
+func (h *BookingHandler) Create(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.CtxUserID).(string)
+	if !ok || userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token non valido"})
+		return
+	}
+
+	var req createBookingRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.VehicleID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Dati non validi"})
+		return
+	}
+
+	booking, err := h.bookings.Create(r.Context(), userID, req.VehicleID)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrVehicleNotAvailable):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "mezzo non disponibile"})
+		case errors.Is(err, domain.ErrActiveBookingExists):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "hai già una prenotazione attiva"})
+		default:
+			log.Printf("[BOOKINGS] create failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, createBookingResponse{
+		Booking: bookingResponse{
+			ID:        booking.ID,
+			VehicleID: booking.VehicleID,
+			ExpiresAt: booking.ExpiresAt.UTC().Format(time.RFC3339),
+		},
+	})
+}

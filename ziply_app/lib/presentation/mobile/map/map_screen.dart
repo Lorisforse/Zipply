@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
+import 'package:ziply_app/presentation/mobile/booking/screens/booking_confirm_screen.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_bottom_sheet.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 import 'package:ziply_app/services/vehicle_service.dart';
@@ -108,9 +109,38 @@ class _MapScreenState extends State<MapScreen> {
     _mapController.move(_center, _kZoom);
   }
 
-  /// UT.05 — Apre la scheda mezzo per il veicolo selezionato.
-  void _onVehicleTap(VehicleModel vehicle) {
-    VehicleBottomSheet.show(context, vehicle, _userPosition);
+  /// UT.05 + UT.02 — Apre la scheda mezzo; al ritorno gestisce l'esito della
+  /// prenotazione: aggiorna i marker e naviga alla conferma, oppure mostra
+  /// l'errore (es. 409 — mezzo non disponibile / prenotazione già attiva).
+  Future<void> _onVehicleTap(VehicleModel vehicle) async {
+    final result = await VehicleBottomSheet.show(context, vehicle, _userPosition);
+    if (result == null || !mounted) return;
+
+    if (result.isSuccess) {
+      // Il mezzo è ora 'prenotato': non deve più comparire tra i disponibili.
+      setState(() {
+        _vehicles =
+            _vehicles.where((v) => v.id != vehicle.id).toList(growable: false);
+      });
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BookingConfirmScreen(
+            booking: result.booking!,
+            vehicle: vehicle,
+          ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: _kSurface,
+          content: Text(
+            result.error ?? 'Prenotazione non riuscita',
+            style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+          ),
+        ),
+      );
+    }
   }
 
   @override

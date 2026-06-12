@@ -32,6 +32,10 @@ func main() {
 	vehicleUsecase := usecase.NewVehicleUsecase(vehicleRepo)
 	vehicleHandler := handler.NewVehicleHandler(vehicleUsecase)
 
+	bookingRepo := repository.NewBookingRepository(pool)
+	bookingUsecase := usecase.NewBookingUsecase(bookingRepo)
+	bookingHandler := handler.NewBookingHandler(bookingUsecase)
+
 	mux := http.NewServeMux()
 
 	// Public routes.
@@ -40,6 +44,7 @@ func main() {
 
 	// Authenticated routes (JWT Bearer).
 	mux.Handle("GET /vehicles", middleware.JWTAuth(http.HandlerFunc(vehicleHandler.List)))
+	mux.Handle("POST /bookings", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Create)))
 
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
