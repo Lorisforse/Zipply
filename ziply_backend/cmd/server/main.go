@@ -11,6 +11,7 @@ import (
 	"github.com/lorisforse/ziply_backend/internal/repository"
 	"github.com/lorisforse/ziply_backend/internal/usecase"
 	"github.com/lorisforse/ziply_backend/pkg/database"
+	"github.com/lorisforse/ziply_backend/pkg/middleware"
 )
 
 // main wires the layers together and starts the HTTP server.
@@ -27,9 +28,18 @@ func main() {
 	authUsecase := usecase.NewAuthUsecase(userRepo)
 	authHandler := handler.NewAuthHandler(authUsecase)
 
+	vehicleRepo := repository.NewVehicleRepository(pool)
+	vehicleUsecase := usecase.NewVehicleUsecase(vehicleRepo)
+	vehicleHandler := handler.NewVehicleHandler(vehicleUsecase)
+
 	mux := http.NewServeMux()
+
+	// Public routes.
 	mux.HandleFunc("POST /auth/register", authHandler.Register)
 	mux.HandleFunc("POST /auth/login", authHandler.Login)
+
+	// Authenticated routes (JWT Bearer).
+	mux.Handle("GET /vehicles", middleware.JWTAuth(http.HandlerFunc(vehicleHandler.List)))
 
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
