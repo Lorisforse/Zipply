@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
+import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_bottom_sheet.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 import 'package:ziply_app/services/vehicle_service.dart';
 
@@ -107,6 +108,11 @@ class _MapScreenState extends State<MapScreen> {
     _mapController.move(_center, _kZoom);
   }
 
+  /// UT.05 — Apre la scheda mezzo per il veicolo selezionato.
+  void _onVehicleTap(VehicleModel vehicle) {
+    VehicleBottomSheet.show(context, vehicle, _userPosition);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -172,7 +178,10 @@ class _MapScreenState extends State<MapScreen> {
           width: VehicleMarker.diameter,
           height: VehicleMarker.diameter,
           rotate: true, // resta dritto quando la mappa viene ruotata
-          child: VehicleMarker(kind: v.kind),
+          child: GestureDetector(
+            onTap: () => _onVehicleTap(v),
+            child: VehicleMarker(kind: v.kind),
+          ),
         ),
     ];
     if (_userPosition != null) {
