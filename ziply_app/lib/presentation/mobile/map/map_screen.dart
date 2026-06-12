@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 import 'package:ziply_app/services/vehicle_service.dart';
@@ -114,14 +115,14 @@ class _MapScreenState extends State<MapScreen> {
         child: Column(
           children: [
             const _Header(),
-            Expanded(child: _buildBody()),
+            Expanded(child: _buildBody(context)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(BuildContext context) {
     switch (_state) {
       case _ViewState.loading:
         return const Center(
@@ -130,11 +131,11 @@ class _MapScreenState extends State<MapScreen> {
       case _ViewState.error:
         return _ErrorView(message: _errorMessage, onRetry: _load);
       case _ViewState.success:
-        return _buildMap();
+        return _buildMap(context);
     }
   }
 
-  Widget _buildMap() {
+  Widget _buildMap(BuildContext context) {
     return Stack(
       children: [
         FlutterMap(
@@ -146,7 +147,9 @@ class _MapScreenState extends State<MapScreen> {
           ),
           children: [
             TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              urlTemplate:
+                  'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key=$kStadiaApiKey',
+              retinaMode: RetinaMode.isHighDensity(context),
               userAgentPackageName: 'it.lorisamato.ziply',
             ),
             MarkerLayer(markers: _buildMarkers()),
@@ -168,6 +171,7 @@ class _MapScreenState extends State<MapScreen> {
           point: LatLng(v.latitude, v.longitude),
           width: VehicleMarker.diameter,
           height: VehicleMarker.diameter,
+          rotate: true, // resta dritto quando la mappa viene ruotata
           child: VehicleMarker(kind: v.kind),
         ),
     ];
@@ -175,8 +179,8 @@ class _MapScreenState extends State<MapScreen> {
       markers.add(
         Marker(
           point: _userPosition!,
-          width: 18,
-          height: 18,
+          width: 20,
+          height: 20,
           child: const _UserDot(),
         ),
       );
@@ -262,13 +266,22 @@ class _UserDot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: 20,
+      height: 20,
       decoration: BoxDecoration(
-        color: _kText,
+        color: Colors.transparent,
         shape: BoxShape.circle,
-        border: Border.all(color: _kBg, width: 2),
-        boxShadow: const [
-          BoxShadow(color: Color(0x66F5F5F5), blurRadius: 0, spreadRadius: 1),
-        ],
+        border: Border.all(color: const Color(0xFFD4580A), width: 2),
+      ),
+      child: Center(
+        child: Container(
+          width: 10,
+          height: 10,
+          decoration: const BoxDecoration(
+            color: Color(0xFFD4580A),
+            shape: BoxShape.circle,
+          ),
+        ),
       ),
     );
   }
