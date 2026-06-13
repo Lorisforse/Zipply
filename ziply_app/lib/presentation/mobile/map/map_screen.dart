@@ -70,6 +70,11 @@ class _MapScreenState extends State<MapScreen> {
   LatLng _center = _kZootropolisCenter;
   LatLng? _userPosition;
 
+  // Avviso "zona vietata": ascolto la posizione in tempo reale e, se l'utente
+  // entra in una zona attiva, mostro un banner non bloccante con il suo nome.
+  StreamSubscription<Position>? _positionSub;
+  ForbiddenZoneModel? _currentForbiddenZone;
+
   // Prenotazione attiva (UT.02): il mezzo prenotato resta evidenziato sulla
   // mappa, gli altri "spenti", con il percorso a piedi e un pannello in basso.
   BookingModel? _activeBooking;
@@ -106,6 +111,12 @@ class _MapScreenState extends State<MapScreen> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _positionSub?.cancel();
+    super.dispose();
+  }
+
   /// Risolve la posizione, recupera i mezzi e gestisce i tre stati UI.
   Future<void> _load() async {
     setState(() => _state = _ViewState.loading);
@@ -131,8 +142,11 @@ class _MapScreenState extends State<MapScreen> {
         _center = center;
         _vehicles = vehicles;
         _forbiddenZones = forbiddenZones;
+        _currentForbiddenZone =
+            userPos != null ? _zoneContaining(userPos, forbiddenZones) : null;
         _state = _ViewState.success;
       });
+      _startPositionStream();
     } on SessionExpiredException {
       await _handleSessionExpired();
     } on Exception catch (e) {
@@ -175,6 +189,43 @@ class _MapScreenState extends State<MapScreen> {
       debugPrint('forbidden zones load failed: $e');
       return const [];
     }
+  }
+
+  /// Si aggancia allo stream GPS (se il permesso c'è) per aggiornare in tempo
+  /// reale posizione e banner "zona vietata". Idempotente: annulla l'eventuale
+  /// sottoscrizione precedente prima di ricrearla (es. dopo un retry).
+  Future<void> _startPositionStream() async {
+    await _positionSub?.cancel();
+    final permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return;
+    }
+    _positionSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10, // aggiorna ogni ~10 m percorsi
+      ),
+    ).listen(_onPositionUpdate);
+  }
+
+  /// Ogni aggiornamento GPS sposta il puntino utente e ricalcola se è dentro
+  /// una zona vietata (per il banner).
+  void _onPositionUpdate(Position pos) {
+    if (!mounted) return;
+    final latlng = LatLng(pos.latitude, pos.longitude);
+    setState(() {
+      _userPosition = latlng;
+      _currentForbiddenZone = _zoneContaining(latlng, _forbiddenZones);
+    });
+  }
+
+  /// Prima zona attiva che contiene [p], oppure null se [p] è fuori da tutte.
+  ForbiddenZoneModel? _zoneContaining(LatLng p, List<ForbiddenZoneModel> zones) {
+    for (final zone in zones) {
+      if (zone.contains(p)) return zone;
+    }
+    return null;
   }
 
   void _recenter() {
@@ -466,6 +517,15 @@ class _MapScreenState extends State<MapScreen> {
           top: 16,
           child: _RecenterButton(onTap: _recenter),
         ),
+        // Avviso "zona vietata": appare/sparisce mentre l'utente si muove.
+        // Lascia spazio a destra (right: 70) per non finire sotto il recenter.
+        if (_currentForbiddenZone != null)
+          Positioned(
+            left: 12,
+            right: 70,
+            top: 16,
+            child: _ForbiddenZoneBanner(zone: _currentForbiddenZone!),
+          ),
         // Pulsante per aprire la lista mezzi vicini (solo in browse mode).
         if (_activeBooking == null)
           Positioned(
@@ -827,6 +887,59 @@ class _RecenterButton extends StatelessWidget {
           ],
         ),
         child: const Icon(Icons.my_location, color: _kAccent, size: 20),
+      ),
+    );
+  }
+}
+
+// ── Banner "zona vietata" (in-mappa, non bloccante) ────────────────────────
+class _ForbiddenZoneBanner extends StatelessWidget {
+  const _ForbiddenZoneBanner({required this.zone});
+
+  final ForbiddenZoneModel zone;
+
+  static const Color _kRed = Color(0xFFE53935);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 42, // stessa altezza del tasto di localizzazione
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: _kSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _kRed),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x73000000), // rgba(0,0,0,0.45)
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: _kRed, size: 20),
+          const SizedBox(width: 8),
+          Text(
+            'ZONA VIETATA',
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+              color: _kRed,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              zone.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.barlow(fontSize: 13, color: _kText),
+            ),
+          ),
+        ],
       ),
     );
   }

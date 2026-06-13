@@ -22,6 +22,12 @@ class ForbiddenZoneModel {
   /// fori interni (ring successivi al primo di ogni poligono) sono ignorati.
   final List<List<LatLng>> rings;
 
+  /// Nome senza il prefisso del municipio in numero romano
+  /// (es. "VI - SAN PASQUALE" → "SAN PASQUALE"). Rimuove solo il numero
+  /// iniziale, non i trattini interni (es. "X - MARCONI - SAN GIROLAMO").
+  String get displayName =>
+      nome.replaceFirst(RegExp(r'^[IVXLCDM]+\s*-\s*'), '').trim();
+
   factory ForbiddenZoneModel.fromJson(Map<String, dynamic> json) {
     final geometry = (json['polygon'] as Map<String, dynamic>?) ?? const {};
     final type = geometry['type'] as String?;
@@ -55,5 +61,27 @@ class ForbiddenZoneModel {
       final lat = (coord[1] as num).toDouble();
       return LatLng(lat, lng);
     }).toList(growable: false);
+  }
+
+  /// True se [point] cade dentro la zona (in uno qualsiasi dei suoi anelli).
+  bool contains(LatLng point) {
+    for (final ring in rings) {
+      if (_isPointInRing(point, ring)) return true;
+    }
+    return false;
+  }
+
+  /// Ray casting: conta gli attraversamenti di una semiretta orizzontale dal
+  /// punto verso est; dispari = dentro. Usa lng come x, lat come y.
+  static bool _isPointInRing(LatLng p, List<LatLng> ring) {
+    var inside = false;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      final xi = ring[i].longitude, yi = ring[i].latitude;
+      final xj = ring[j].longitude, yj = ring[j].latitude;
+      final intersects = ((yi > p.latitude) != (yj > p.latitude)) &&
+          (p.longitude < (xj - xi) * (p.latitude - yi) / (yj - yi) + xi);
+      if (intersects) inside = !inside;
+    }
+    return inside;
   }
 }
