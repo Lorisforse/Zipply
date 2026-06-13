@@ -32,6 +32,40 @@ class RideService {
     return _unlock({'qr_code': qrCode, 'unlock_method': 'qr'});
   }
 
+  /// Termina la corsa [rideId] (POST /rides/{id}/end): la corsa diventa
+  /// 'completata' e il mezzo torna disponibile. Non restituisce nulla in caso
+  /// di successo; lancia [SessionExpiredException] sul 401, altrimenti una
+  /// Exception con messaggio pronto per la UI.
+  Future<void> endRide(String rideId) async {
+    final token = await _storage.read(key: kTokenKey);
+
+    final http.Response response;
+    try {
+      response = await _client.post(
+        Uri.parse('$kBaseUrl/rides/$rideId/end'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(_timeout);
+    } on http.ClientException {
+      throw Exception('Impossibile connettersi al server');
+    } on TimeoutException {
+      throw Exception('Impossibile connettersi al server');
+    }
+
+    if (response.statusCode == 200) return;
+    if (response.statusCode == 401) throw const SessionExpiredException();
+
+    final body = _decodeBody(response.bodyBytes);
+    final serverMessage = body?['error'];
+    throw Exception(
+      serverMessage is String && serverMessage.isNotEmpty
+          ? serverMessage
+          : 'Impossibile terminare il noleggio',
+    );
+  }
+
   /// Esegue la POST /rides/unlock con il body indicato. In caso di errore
   /// lancia una Exception con un messaggio pronto per la UI; per 404/409
   /// propaga il messaggio del backend ("veicolo non trovato", "prenotazione

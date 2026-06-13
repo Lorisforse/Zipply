@@ -14,6 +14,8 @@ import 'package:ziply_app/data/models/ride_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
+import 'package:ziply_app/services/api_exceptions.dart';
+import 'package:ziply_app/services/ride_service.dart';
 
 // ── Palette (da Grafica/noleggio-attivo-handoff) ───────────────────────────
 const Color _kBg       = Color(0xFF1A1A1A);
@@ -129,7 +131,9 @@ class _ActiveRentalBanner extends StatefulWidget {
 }
 
 class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
+  final RideService _rideService = RideService();
   Timer? _ticker;
+  bool _ending = false;
 
   @override
   void initState() {
@@ -168,17 +172,43 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
 
   String _euro(double value) => '€ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
 
-  void _onEndRide() {
-    // La fine del noleggio è una funzione a parte (oltre lo scope di UT.13).
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: _kSurface,
-        content: Text(
-          'La fine del noleggio sarà disponibile a breve',
-          style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+  /// Termina il noleggio: chiude la corsa lato backend (così il mezzo torna
+  /// disponibile) e torna alla mappa. In caso di errore resta sulla schermata
+  /// mostrando il messaggio.
+  Future<void> _onEndRide() async {
+    if (_ending) return;
+    setState(() => _ending = true);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _rideService.endRide(widget.ride.id);
+      if (!mounted) return;
+      navigator.pop();
+    } on SessionExpiredException catch (e) {
+      if (!mounted) return;
+      setState(() => _ending = false);
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: _kSurface,
+          content: Text(
+            e.message,
+            style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+          ),
         ),
-      ),
-    );
+      );
+    } on Exception catch (e) {
+      if (!mounted) return;
+      setState(() => _ending = false);
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: _kSurface,
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+            style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -294,15 +324,24 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                 ],
               ),
               const SizedBox(height: 14),
-              // Azione: termina noleggio (funzione separata, oltre UT.13).
+              // Azione: termina noleggio (chiude la corsa e libera il mezzo).
               SizedBox(
                 height: 52,
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: _onEndRide,
-                  icon: const Icon(Icons.stop_rounded, size: 20, color: _kBg),
+                  onPressed: _ending ? null : _onEndRide,
+                  icon: _ending
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: _kBg,
+                          ),
+                        )
+                      : const Icon(Icons.stop_rounded, size: 20, color: _kBg),
                   label: Text(
-                    'TERMINA NOLEGGIO',
+                    _ending ? 'TERMINO…' : 'TERMINA NOLEGGIO',
                     style: GoogleFonts.barlowCondensed(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
@@ -313,6 +352,7 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _kAccent,
                     foregroundColor: _kBg,
+                    disabledBackgroundColor: _kAccent,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4),

@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -11,7 +10,7 @@ import (
 	"github.com/lorisforse/ziply_backend/internal/domain"
 )
 
-// RideRepository provides access to the rides table and the unlock flow.
+// RideRepository provides access to the rides table and the unlock/end flow.
 type RideRepository struct {
 	pool *pgxpool.Pool
 }
@@ -21,16 +20,19 @@ func NewRideRepository(pool *pgxpool.Pool) *RideRepository {
 	return &RideRepository{pool: pool}
 }
 
-// Unlock atomically starts a ride on the vehicle reserved by the user. Exactly
+// Unlock atomically starts a ride on a vehicle, senza richiedere una
+// prenotazione: l'utente può arrivare davanti al mezzo e sbloccarlo. Exactly
 // one of vehicleID / qrCode identifies the vehicle: proximity passes the id, the
-// QR flow passes the code printed on the physical vehicle. In a single
-// transaction it locks the vehicle row, resolves it, verifies the user holds an
-// active and non-expired booking on it, then inserts the ride ('attiva'), marks
-// the booking 'utilizzata' and the vehicle 'in_uso'.
+// QR flow passes the code printed on the physical vehicle.
 //
-// Returns domain.ErrVehicleNotFound when the vehicle does not exist,
-// domain.ErrNoActiveBooking when the user has no active booking on it and
-// domain.ErrBookingExpired when the booking is active but its hold has elapsed.
+// In una singola transazione blocca e risolve il veicolo, poi:
+//   - se l'utente ha già una prenotazione 'attiva' su quel mezzo, la consuma;
+//   - altrimenti pretende che il mezzo sia 'disponibile' e crea al volo una
+//     prenotazione implicita (subito 'utilizzata') per ancorare la corsa.
+//
+// Infine inserisce la corsa ('attiva') e porta il veicolo 'in_uso'. Ritorna
+// domain.ErrVehicleNotFound se il mezzo non esiste e domain.ErrVehicleNotAvailable
+// se non è sbloccabile (in uso, in manutenzione o prenotato da un altro utente).
 func (r *RideRepository) Unlock(ctx context.Context, userID, vehicleID, qrCode string) (*domain.Ride, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -38,16 +40,16 @@ func (r *RideRepository) Unlock(ctx context.Context, userID, vehicleID, qrCode s
 	}
 	defer tx.Rollback(ctx)
 
-	// Lock and resolve the vehicle, by id (proximity) or by qr_code (QR scan).
-	var resolvedVehicleID string
+	// Risolve e blocca il veicolo, per id (proximity) o per qr_code (QR scan).
+	var resolvedVehicleID, status string
 	if qrCode != "" {
 		err = tx.QueryRow(ctx,
-			`SELECT id FROM vehicles WHERE qr_code = $1 FOR UPDATE`, qrCode,
-		).Scan(&resolvedVehicleID)
+			`SELECT id, status FROM vehicles WHERE qr_code = $1 FOR UPDATE`, qrCode,
+		).Scan(&resolvedVehicleID, &status)
 	} else {
 		err = tx.QueryRow(ctx,
-			`SELECT id FROM vehicles WHERE id = $1 FOR UPDATE`, vehicleID,
-		).Scan(&resolvedVehicleID)
+			`SELECT id, status FROM vehicles WHERE id = $1 FOR UPDATE`, vehicleID,
+		).Scan(&resolvedVehicleID, &status)
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrVehicleNotFound
@@ -56,49 +58,56 @@ func (r *RideRepository) Unlock(ctx context.Context, userID, vehicleID, qrCode s
 		return nil, err
 	}
 
-	// Find the user's active booking on this vehicle and lock it. An expired
-	// hold (expires_at <= now) is rejected distinctly from "no booking at all".
+	// Eventuale prenotazione 'attiva' dell'utente su questo mezzo: se c'è la
+	// consumiamo, altrimenti procediamo allo sblocco diretto.
 	var bookingID string
-	var expiresAt time.Time
 	err = tx.QueryRow(ctx,
-		`SELECT id, expires_at FROM bookings
+		`SELECT id FROM bookings
 		 WHERE user_id = $1 AND vehicle_id = $2 AND status = 'attiva'
 		 ORDER BY created_at DESC
 		 LIMIT 1
 		 FOR UPDATE`,
 		userID, resolvedVehicleID,
-	).Scan(&bookingID, &expiresAt)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, domain.ErrNoActiveBooking
-	}
-	if err != nil {
+	).Scan(&bookingID)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		// Nessuna prenotazione: sblocco diretto, ma solo se il mezzo è libero.
+		if status != "disponibile" {
+			return nil, domain.ErrVehicleNotAvailable
+		}
+		// Prenotazione implicita (subito 'utilizzata') per ancorare la corsa.
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO bookings (user_id, vehicle_id, expires_at, status)
+			 VALUES ($1, $2, NOW(), 'utilizzata')
+			 RETURNING id`,
+			userID, resolvedVehicleID,
+		).Scan(&bookingID); err != nil {
+			return nil, err
+		}
+	case err != nil:
 		return nil, err
-	}
-	if !expiresAt.After(time.Now()) {
-		return nil, domain.ErrBookingExpired
+	default:
+		// Prenotazione attiva esistente: la marchiamo come utilizzata.
+		if _, err := tx.Exec(ctx,
+			`UPDATE bookings SET status = 'utilizzata' WHERE id = $1`,
+			bookingID,
+		); err != nil {
+			return nil, err
+		}
 	}
 
-	// Create the ride.
+	// Crea la corsa.
 	ride := &domain.Ride{BookingID: bookingID, UserID: userID, VehicleID: resolvedVehicleID}
-	err = tx.QueryRow(ctx,
+	if err := tx.QueryRow(ctx,
 		`INSERT INTO rides (booking_id, user_id, vehicle_id, started_at, status)
 		 VALUES ($1, $2, $3, NOW(), 'attiva')
 		 RETURNING id, started_at, status`,
 		bookingID, userID, resolvedVehicleID,
-	).Scan(&ride.ID, &ride.StartedAt, &ride.Status)
-	if err != nil {
+	).Scan(&ride.ID, &ride.StartedAt, &ride.Status); err != nil {
 		return nil, err
 	}
 
-	// Mark the booking used.
-	if _, err := tx.Exec(ctx,
-		`UPDATE bookings SET status = 'utilizzata' WHERE id = $1`,
-		bookingID,
-	); err != nil {
-		return nil, err
-	}
-
-	// Mark the vehicle in use.
+	// Porta il veicolo in uso.
 	if _, err := tx.Exec(ctx,
 		`UPDATE vehicles SET status = 'in_uso', updated_at = NOW() WHERE id = $1`,
 		resolvedVehicleID,
@@ -110,4 +119,45 @@ func (r *RideRepository) Unlock(ctx context.Context, userID, vehicleID, qrCode s
 		return nil, err
 	}
 	return ride, nil
+}
+
+// End chiude la corsa 'attiva' dell'utente e rimette il mezzo 'disponibile', in
+// un'unica transazione. Ritorna domain.ErrRideNotFound se non esiste una corsa
+// attiva con quell'id appartenente all'utente.
+func (r *RideRepository) End(ctx context.Context, userID, rideID string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Blocca la corsa e verifica che sia dell'utente e ancora attiva.
+	var vehicleID string
+	err = tx.QueryRow(ctx,
+		`SELECT vehicle_id FROM rides
+		 WHERE id = $1 AND user_id = $2 AND status = 'attiva' FOR UPDATE`,
+		rideID, userID,
+	).Scan(&vehicleID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrRideNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE rides SET status = 'completata', ended_at = NOW() WHERE id = $1`,
+		rideID,
+	); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE vehicles SET status = 'disponibile', updated_at = NOW() WHERE id = $1`,
+		vehicleID,
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }

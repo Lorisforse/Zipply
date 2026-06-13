@@ -78,10 +78,8 @@ func (h *RideHandler) Unlock(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, domain.ErrVehicleNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "veicolo non trovato"})
-		case errors.Is(err, domain.ErrNoActiveBooking):
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "nessuna prenotazione attiva valida per questo mezzo"})
-		case errors.Is(err, domain.ErrBookingExpired):
-			writeJSON(w, http.StatusConflict, map[string]string{"error": "prenotazione scaduta"})
+		case errors.Is(err, domain.ErrVehicleNotAvailable):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "mezzo non disponibile"})
 		default:
 			log.Printf("[RIDES] unlock failed: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})
@@ -94,4 +92,33 @@ func (h *RideHandler) Unlock(w http.ResponseWriter, r *http.Request) {
 		VehicleID: ride.VehicleID,
 		StartedAt: ride.StartedAt.UTC().Format(time.RFC3339),
 	})
+}
+
+// End handles POST /rides/{id}/end, chiudendo la corsa attiva dell'utente
+// autenticato e rimettendo il mezzo disponibile.
+func (h *RideHandler) End(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.CtxUserID).(string)
+	if !ok || userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token non valido"})
+		return
+	}
+
+	rideID := r.PathValue("id")
+	if rideID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Dati non validi"})
+		return
+	}
+
+	if err := h.rides.End(r.Context(), userID, rideID); err != nil {
+		switch {
+		case errors.Is(err, domain.ErrRideNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "corsa non trovata o già conclusa"})
+		default:
+			log.Printf("[RIDES] end failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "completata"})
 }

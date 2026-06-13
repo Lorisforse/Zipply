@@ -1,28 +1,45 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
+import 'package:ziply_app/data/models/ride_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/services/booking_service.dart';
+import 'package:ziply_app/services/ride_service.dart';
 
 // ── Palette (da Grafica/mappa-handoff) ─────────────────────────────────────
 const Color _kBg      = Color(0xFF1A1A1A);
+const Color _kSurface = Color(0xFF252525);
 const Color _kBorder  = Color(0xFF333333);
 const Color _kText    = Color(0xFFF5F5F5);
 const Color _kDim     = Color(0xFF777777);
 const Color _kAccent  = Color(0xFFF69659);
 
-/// Esito del flusso di prenotazione restituito da [VehicleBottomSheet.show]:
-/// [booking] valorizzato in caso di successo, [error] in caso di fallimento.
+// UT.13 — Sblocco per prossimità abilitato solo entro questa distanza (metri).
+const double _kUnlockRadiusMeters = 50;
+
+/// Esito delle azioni della scheda mezzo restituito da [VehicleBottomSheet.show]:
+/// [booking] se è stata creata una prenotazione, [ride] se il mezzo è stato
+/// sbloccato direttamente, [error] in caso di fallimento.
 class VehicleBookingResult {
-  const VehicleBookingResult.success(BookingModel this.booking) : error = null;
-  const VehicleBookingResult.failure(String this.error) : booking = null;
+  const VehicleBookingResult.success(BookingModel this.booking)
+      : ride = null,
+        error = null;
+  const VehicleBookingResult.unlocked(RideModel this.ride)
+      : booking = null,
+        error = null;
+  const VehicleBookingResult.failure(String this.error)
+      : booking = null,
+        ride = null;
 
   final BookingModel? booking;
+  final RideModel? ride;
   final String? error;
 
   bool get isSuccess => booking != null;
+  bool get isUnlocked => ride != null;
 }
 
 /// [MOBILE] UT.05 + UT.02 — Scheda mezzo e avvio prenotazione.
@@ -68,7 +85,24 @@ class VehicleBottomSheet extends StatefulWidget {
 
 class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
   final BookingService _bookingService = BookingService();
+  final RideService _rideService = RideService();
   bool _isBooking = false;
+  bool _isUnlocking = false;
+
+  /// True quando l'utente è abbastanza vicino al mezzo da poterlo sbloccare
+  /// per prossimità (≤ 50 m). Se la posizione non è nota, lo sblocco di
+  /// prossimità non è disponibile (resta il QR dalla mappa).
+  bool get _canUnlock {
+    final from = widget.userPosition;
+    if (from == null) return false;
+    final meters = Geolocator.distanceBetween(
+      from.latitude,
+      from.longitude,
+      widget.vehicle.latitude,
+      widget.vehicle.longitude,
+    );
+    return meters <= _kUnlockRadiusMeters;
+  }
 
   /// Avvia la prenotazione mostrando il loading sul pulsante, poi chiude la
   /// scheda restituendone l'esito al chiamante (la mappa).
@@ -90,9 +124,30 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
     navigator.pop(result);
   }
 
+  /// UT.13 — Sblocca direttamente il mezzo per prossimità (senza prenotare),
+  /// poi chiude la scheda restituendo la corsa avviata al chiamante (la mappa).
+  Future<void> _unlock() async {
+    setState(() => _isUnlocking = true);
+    final navigator = Navigator.of(context);
+
+    VehicleBookingResult result;
+    try {
+      final ride = await _rideService.unlockByProximity(widget.vehicle.id);
+      result = VehicleBookingResult.unlocked(ride);
+    } on Exception catch (e) {
+      result = VehicleBookingResult.failure(
+        e.toString().replaceFirst('Exception: ', ''),
+      );
+    }
+
+    if (!mounted) return;
+    navigator.pop(result);
+  }
+
   @override
   Widget build(BuildContext context) {
     final vehicle = widget.vehicle;
+    final busy = _isBooking || _isUnlocking;
     final title = vehicle.type.isEmpty ? 'Mezzo' : vehicle.type;
     final rateText =
         '${(vehicle.hourlyRate / 60).toStringAsFixed(2).replaceAll('.', ',')} €';
@@ -175,22 +230,27 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                 ],
               ),
               const SizedBox(height: 20),
-              // CTA prenotazione (UT.02).
+              // UT.13 — Sblocco diretto per prossimità (azione principale):
+              // abilitato solo entro 50 m dal mezzo.
               SizedBox(
                 height: 52,
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isBooking ? null : _book,
+                  onPressed: (_canUnlock && !busy) ? _unlock : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _kAccent,
                     foregroundColor: _kBg,
-                    disabledBackgroundColor: _kAccent,
+                    disabledBackgroundColor: _kSurface,
+                    disabledForegroundColor: _kDim,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4),
+                      side: _canUnlock
+                          ? BorderSide.none
+                          : const BorderSide(color: _kBorder),
                     ),
                   ),
-                  child: _isBooking
+                  child: _isUnlocking
                       ? const SizedBox(
                           width: 22,
                           height: 22,
@@ -199,13 +259,71 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                             color: _kBg,
                           ),
                         )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.lock_open_rounded,
+                              size: 20,
+                              color: _canUnlock ? _kBg : _kDim,
+                            ),
+                            const SizedBox(width: 9),
+                            Text(
+                              'SBLOCCA MEZZO',
+                              style: GoogleFonts.barlowCondensed(
+                                fontSize: 19,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.2,
+                                color: _canUnlock ? _kBg : _kDim,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+              if (!_canUnlock) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Avvicinati al mezzo (entro 50 m) per sbloccarlo, oppure usa «Scansiona QR» sulla mappa.',
+                  style: GoogleFonts.barlow(
+                    fontSize: 12.5,
+                    height: 1.3,
+                    color: _kDim,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 10),
+              // UT.02 — Prenotazione (opzionale): tiene il mezzo per te finché
+              // non ci arrivi.
+              SizedBox(
+                height: 46,
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: busy ? null : _book,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _kAccent,
+                    side: const BorderSide(color: _kAccent),
+                    disabledForegroundColor: _kDim,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  child: _isBooking
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: _kAccent,
+                          ),
+                        )
                       : Text(
                           'PRENOTA',
                           style: GoogleFonts.barlowCondensed(
-                            fontSize: 19,
+                            fontSize: 17,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 1.5,
-                            color: _kBg,
+                            color: _kAccent,
                           ),
                         ),
                 ),

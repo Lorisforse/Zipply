@@ -22,9 +22,11 @@ const (
 	UnlockMethodQR        = "qr"
 )
 
-// Domain errors returned by the unlock flow.
+// Domain errors returned by the ride flow. Lo sblocco non richiede una
+// prenotazione: basta che il mezzo sia disponibile (o già prenotato
+// dall'utente stesso). Il 409 condivide ErrVehicleNotAvailable con il flusso
+// di prenotazione.
 var (
 	ErrVehicleNotFound = errors.New("veicolo non trovato")
-	ErrNoActiveBooking = errors.New("nessuna prenotazione attiva valida")
-	ErrBookingExpired  = errors.New("prenotazione scaduta")
+	ErrRideNotFound    = errors.New("corsa non trovata")
 )

@@ -60,6 +60,7 @@ func main() {
 	mux.Handle("POST /bookings", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Create)))
 	mux.Handle("POST /bookings/{id}/cancel", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Cancel)))
 	mux.Handle("POST /rides/unlock", middleware.JWTAuth(http.HandlerFunc(rideHandler.Unlock)))
+	mux.Handle("POST /rides/{id}/end", middleware.JWTAuth(http.HandlerFunc(rideHandler.End)))
 	mux.Handle("POST /payment-methods", middleware.JWTAuth(http.HandlerFunc(paymentMethodHandler.Create)))
 	mux.Handle("GET /payment-methods", middleware.JWTAuth(http.HandlerFunc(paymentMethodHandler.List)))
 	mux.Handle("DELETE /payment-methods/{id}", middleware.JWTAuth(http.HandlerFunc(paymentMethodHandler.Delete)))

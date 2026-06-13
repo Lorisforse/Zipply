@@ -275,9 +275,9 @@ class _MapScreenState extends State<MapScreen> {
     return list;
   }
 
-  /// UT.05 + UT.02 — Apre la scheda mezzo; al ritorno, se la prenotazione va a
-  /// buon fine, resta sulla mappa in modalità "raggiungi il mezzo" (mezzo
-  /// evidenziato, altri spenti, percorso a piedi, pannello in basso).
+  /// UT.05 + UT.02 + UT.13 — Apre la scheda mezzo; al ritorno gestisce l'esito:
+  /// sblocco diretto → schermata noleggio; prenotazione → resta sulla mappa in
+  /// modalità "raggiungi il mezzo"; errore → snackbar.
   Future<void> _onVehicleTap(VehicleModel vehicle) async {
     // Con una prenotazione attiva gli altri marker sono spenti e inerti.
     if (_activeBooking != null) return;
@@ -285,7 +285,9 @@ class _MapScreenState extends State<MapScreen> {
     final result = await VehicleBottomSheet.show(context, vehicle, _userPosition);
     if (result == null || !mounted) return;
 
-    if (result.isSuccess) {
+    if (result.isUnlocked) {
+      await _openRide(result.ride!, vehicle);
+    } else if (result.isSuccess) {
       setState(() {
         _activeBooking = result.booking;
         _bookedVehicle = vehicle;
@@ -301,7 +303,7 @@ class _MapScreenState extends State<MapScreen> {
         SnackBar(
           backgroundColor: _kSurface,
           content: Text(
-            result.error ?? 'Prenotazione non riuscita',
+            result.error ?? 'Operazione non riuscita',
             style: GoogleFonts.barlow(fontSize: 14, color: _kText),
           ),
         ),
@@ -435,51 +437,44 @@ class _MapScreenState extends State<MapScreen> {
     return meters <= _kUnlockRadiusMeters;
   }
 
-  /// UT.13 — Sblocco per prossimità: chiama POST /rides/unlock con il
-  /// vehicle_id del mezzo prenotato.
+  /// UT.13 — Sblocco per prossimità del mezzo prenotato (dal pannello
+  /// prenotazione): chiama POST /rides/unlock con il vehicle_id.
   Future<void> _onUnlockProximity() async {
     final vehicle = _bookedVehicle;
     if (vehicle == null || _unlocking) return;
     await _performUnlock(() => _rideService.unlockByProximity(vehicle.id), vehicle);
   }
 
-  /// UT.13 — Sblocco via QR: apre lo scanner, poi chiama POST /rides/unlock con
-  /// il qr_code letto dal mezzo fisico.
-  Future<void> _onUnlockQr() async {
-    final vehicle = _bookedVehicle;
-    if (vehicle == null || _unlocking) return;
+  /// UT.13 — Sblocco via QR (globale): apre lo scanner, sblocca il mezzo letto
+  /// (non serve prenotazione) e apre la schermata di noleggio. Il mezzo viene
+  /// risolto dalla lista già caricata tramite il vehicle_id della corsa.
+  Future<void> _onScanQr() async {
+    if (_unlocking) return;
     final code = await QrScanScreen.show(context);
     if (code == null || !mounted) return;
-    await _performUnlock(() => _rideService.unlockByQr(code), vehicle);
-  }
 
-  /// Esegue lo sblocco ([unlock]) mostrando il loading, e — se va a buon fine —
-  /// libera lo stato della prenotazione (ormai consumata) e apre la schermata
-  /// di noleggio attivo. Al ritorno ricarica i mezzi (quello in uso non è più
-  /// disponibile). Gestisce 401 e gli altri errori con messaggi chiari.
-  Future<void> _performUnlock(
-    Future<RideModel> Function() unlock,
-    VehicleModel vehicle,
-  ) async {
     setState(() => _unlocking = true);
-    final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final ride = await unlock();
+      final ride = await _rideService.unlockByQr(code);
       if (!mounted) return;
-      setState(() {
-        _activeBooking = null;
-        _bookedVehicle = null;
-        _walkingRoute = const [];
-        _unlocking = false;
-      });
-      await navigator.push(
-        MaterialPageRoute(
-          builder: (_) => RideScreen(ride: ride, vehicle: vehicle),
-        ),
-      );
-      if (!mounted) return;
-      _load();
+      setState(() => _unlocking = false);
+      final vehicle = _vehicleForRide(ride);
+      if (vehicle == null) {
+        // Mezzo non presente tra quelli caricati: ricarica e basta.
+        messenger.showSnackBar(
+          SnackBar(
+            backgroundColor: _kSurface,
+            content: Text(
+              'Mezzo sbloccato',
+              style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+            ),
+          ),
+        );
+        _load();
+        return;
+      }
+      await _openRide(ride, vehicle);
     } on SessionExpiredException {
       if (mounted) setState(() => _unlocking = false);
       await _handleSessionExpired();
@@ -496,6 +491,62 @@ class _MapScreenState extends State<MapScreen> {
         ),
       );
     }
+  }
+
+  /// Esegue lo sblocco per prossimità ([unlock]) mostrando il loading, poi apre
+  /// la schermata di noleggio. Gestisce 401 e gli altri errori con messaggi.
+  Future<void> _performUnlock(
+    Future<RideModel> Function() unlock,
+    VehicleModel vehicle,
+  ) async {
+    setState(() => _unlocking = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final ride = await unlock();
+      if (!mounted) return;
+      setState(() => _unlocking = false);
+      await _openRide(ride, vehicle);
+    } on SessionExpiredException {
+      if (mounted) setState(() => _unlocking = false);
+      await _handleSessionExpired();
+    } on Exception catch (e) {
+      if (!mounted) return;
+      setState(() => _unlocking = false);
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: _kSurface,
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+            style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+          ),
+        ),
+      );
+    }
+  }
+
+  /// Mezzo corrispondente alla corsa (per `vehicle_id`) tra quelli caricati.
+  VehicleModel? _vehicleForRide(RideModel ride) {
+    for (final v in _vehicles) {
+      if (v.id == ride.vehicleId) return v;
+    }
+    return null;
+  }
+
+  /// Libera lo stato di prenotazione (ormai consumata), apre la schermata di
+  /// noleggio attivo e — al ritorno — ricarica i mezzi: quello in uso non è più
+  /// disponibile finché la corsa non viene terminata (poi torna in lista).
+  Future<void> _openRide(RideModel ride, VehicleModel vehicle) async {
+    final navigator = Navigator.of(context);
+    setState(() {
+      _activeBooking = null;
+      _bookedVehicle = null;
+      _walkingRoute = const [];
+    });
+    await navigator.push(
+      MaterialPageRoute(builder: (_) => RideScreen(ride: ride, vehicle: vehicle)),
+    );
+    if (!mounted) return;
+    _load();
   }
 
   /// Token assente/scaduto (401): pulisce il token, avvisa e torna al login.
@@ -633,6 +684,17 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
           ),
+        // UT.13 — Sblocco via QR (globale): arriva davanti al mezzo, scansiona e
+        // parte la corsa, senza bisogno di prenotare.
+        if (_activeBooking == null)
+          Positioned(
+            right: 16,
+            bottom: 24,
+            child: _ScanQrButton(
+              busy: _unlocking,
+              onTap: _unlocking ? null : _onScanQr,
+            ),
+          ),
         // Pannello prenotazione attiva: non bloccante, la mappa resta visibile.
         if (_activeBooking != null && _bookedVehicle != null)
           Positioned(
@@ -645,7 +707,7 @@ class _MapScreenState extends State<MapScreen> {
               canUnlockByProximity: _canUnlockByProximity(),
               unlocking: _unlocking,
               onUnlockProximity: _onUnlockProximity,
-              onUnlockQr: _onUnlockQr,
+              onUnlockQr: _onScanQr,
               onCancel: _onCancelBooking,
             ),
           ),
@@ -965,6 +1027,48 @@ class _NearbyButton extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Pulsante "scansiona QR" (sblocco diretto, bottom-right) ────────────────
+class _ScanQrButton extends StatelessWidget {
+  const _ScanQrButton({required this.onTap, required this.busy});
+
+  final VoidCallback? onTap;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(28),
+        child: Container(
+          width: 56,
+          height: 56,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _kAccent,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x73000000), // rgba(0,0,0,0.45)
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: busy
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5, color: _kBg),
+                )
+              : const Icon(Icons.qr_code_scanner, color: _kBg, size: 26),
         ),
       ),
     );
