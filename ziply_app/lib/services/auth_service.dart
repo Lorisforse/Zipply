@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:ziply_app/constants.dart';
+import 'package:ziply_app/core/utils/app_logger.dart';
 
 /// Servizio di autenticazione: chiamate REST verso ziply_backend e
 /// persistenza del token JWT in storage sicuro.
@@ -18,22 +19,38 @@ class AuthService {
   static const Duration _timeout = Duration(seconds: 10);
 
   /// Effettua il login e restituisce il body JSON della risposta (token + user).
-  Future<Map<String, dynamic>> login(String email, String password) {
-    return _postJson(
-      '/auth/login',
-      {'email': email, 'password': password},
-      expectedStatus: 200,
-    );
+  Future<Map<String, dynamic>> login(String email, String password) async {
+    zlog('Login in corso per $email', tag: 'Auth');
+    try {
+      final data = await _postJson(
+        '/auth/login',
+        {'email': email, 'password': password},
+        expectedStatus: 200,
+      );
+      zlog('Login riuscito per $email', tag: 'Auth');
+      return data;
+    } on Exception catch (e) {
+      zlog('Login fallito per $email: $e', tag: 'Auth');
+      rethrow;
+    }
   }
 
   /// Registra un nuovo utente e restituisce il body JSON della risposta (token + user).
   Future<Map<String, dynamic>> register(
-      String nome, String cognome, String email, String password) {
-    return _postJson(
-      '/auth/register',
-      {'nome': nome, 'cognome': cognome, 'email': email, 'password': password},
-      expectedStatus: 201,
-    );
+      String nome, String cognome, String email, String password) async {
+    zlog('Registrazione in corso per $email', tag: 'Auth');
+    try {
+      final data = await _postJson(
+        '/auth/register',
+        {'nome': nome, 'cognome': cognome, 'email': email, 'password': password},
+        expectedStatus: 201,
+      );
+      zlog('Registrazione riuscita per $email', tag: 'Auth');
+      return data;
+    } on Exception catch (e) {
+      zlog('Registrazione fallita per $email: $e', tag: 'Auth');
+      rethrow;
+    }
   }
 
   /// Salva il token JWT nello storage sicuro.
@@ -44,7 +61,10 @@ class AuthService {
   Future<String?> getToken() => _storage.read(key: kTokenKey);
 
   /// Elimina il token salvato (logout).
-  Future<void> logout() => _storage.delete(key: kTokenKey);
+  Future<void> logout() async {
+    zlog('Logout: rimuovo il token', tag: 'Auth');
+    await _storage.delete(key: kTokenKey);
+  }
 
   /// Esegue una POST JSON e converte gli errori HTTP o di rete in Exception
   /// con messaggi human-readable pronti per la UI.

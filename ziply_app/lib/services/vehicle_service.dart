@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:ziply_app/constants.dart';
+import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 
@@ -57,9 +58,11 @@ class VehicleService {
       final body =
           jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
       final list = (body['vehicles'] as List<dynamic>?) ?? const [];
-      return list
+      final vehicles = list
           .map((e) => VehicleModel.fromJson(e as Map<String, dynamic>))
           .toList();
+      zlog('${vehicles.length} mezzi disponibili dal server', tag: 'Mezzi');
+      return vehicles;
     }
     // 401: token assente/scaduto/non valido → l'utente deve riautenticarsi.
     if (response.statusCode == 401) {

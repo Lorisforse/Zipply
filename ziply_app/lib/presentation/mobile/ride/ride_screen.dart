@@ -10,6 +10,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ziply_app/constants.dart';
+import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/data/models/ride_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
@@ -195,12 +196,14 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
     // valori già calcolati qui.
     final duration = Duration(seconds: _elapsedSeconds);
     final cost = _cost;
+    zlog('Termino il noleggio ${widget.ride.id}', tag: 'Noleggio');
     setState(() => _ending = true);
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     try {
       await _rideService.endRide(widget.ride.id);
       if (!mounted) return;
+      zlog('Noleggio terminato: mostro il riepilogo', tag: 'Noleggio');
       await RideSummaryScreen.show(
         navigator.context,
         ride: widget.ride,

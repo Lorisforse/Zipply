@@ -70,8 +70,12 @@ func main() {
 		port = "8080"
 	}
 
+	// Logging middleware attorno all'intero mux: una riga di log per ogni
+	// chiamata a un endpoint (metodo, path, status, durata).
+	handler := middleware.Logging(mux)
+
 	log.Printf("[AUTH] server listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatalf("[AUTH] server stopped: %v", err)
 	}
 }

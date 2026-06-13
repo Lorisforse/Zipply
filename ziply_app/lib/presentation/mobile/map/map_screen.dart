@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ziply_app/constants.dart';
+import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
 import 'package:ziply_app/data/models/forbidden_zone_model.dart';
 import 'package:ziply_app/data/models/ride_model.dart';
@@ -170,6 +171,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         return;
       }
       setState(() => _vehicles = vehicles);
+      zlog('Auto-refresh: ${vehicles.length} mezzi', tag: 'Mappa');
     } on Exception {
       // Refresh silenzioso: ignora l'errore e riprova al prossimo giro.
     }
@@ -204,6 +206,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             userPos != null ? _zoneContaining(userPos, forbiddenZones) : null;
         _state = _ViewState.success;
       });
+      zlog(
+        'Mappa pronta: ${vehicles.length} mezzi, GPS '
+        '${userPos != null ? 'attivo' : 'non disponibile'}',
+        tag: 'Mappa',
+      );
       _startPositionStream();
     } on SessionExpiredException {
       await _handleSessionExpired();
@@ -292,6 +299,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void _recenter() {
     final pos = _userPosition;
     if (pos == null) {
+      zlog('Recenter richiesto ma GPS non disponibile', tag: 'Mappa');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: _kSurface,
@@ -303,6 +311,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       );
       return;
     }
+    zlog('Ricentro sulla posizione utente', tag: 'Mappa');
     _animatedMapMove(pos, _kZoom);
     setState(() => _recenterPing++);
   }
@@ -390,6 +399,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     if (result.isUnlocked) {
       await _openRide(result.ride!, vehicle);
     } else if (result.isSuccess) {
+      zlog('Mezzo prenotato: ${vehicle.type}', tag: 'Prenotazione');
       setState(() {
         _activeBooking = result.booking;
         _bookedVehicle = vehicle;
@@ -443,6 +453,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     try {
       await _bookingService.cancelBooking(booking.id);
       if (!mounted) return;
+      zlog('Prenotazione annullata', tag: 'Prenotazione');
       setState(() {
         _activeBooking = null;
         _bookedVehicle = null;
@@ -623,6 +634,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// noleggio attivo e — al ritorno — ricarica i mezzi: quello in uso non è più
   /// disponibile finché la corsa non viene terminata (poi torna in lista).
   Future<void> _openRide(RideModel ride, VehicleModel vehicle) async {
+    zlog('Mezzo sbloccato (${vehicle.type}): apro la corsa', tag: 'Noleggio');
     final navigator = Navigator.of(context);
     setState(() {
       _activeBooking = null;
@@ -938,6 +950,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// fa "scomporre" l'aggregato nei singoli mezzi durante l'animazione (il
   /// clustering è ricalcolato a ogni frame in base alla camera).
   void _onClusterTap(_Cluster cluster) {
+    zlog('Espando cluster di ${cluster.members.length} mezzi', tag: 'Mappa');
     final target = (_mapController.camera.zoom + 2).clamp(1.0, 18.0);
     _animatedMapMove(cluster.center, target);
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
 import 'package:ziply_app/presentation/mobile/map/map_screen.dart';
 import 'package:ziply_app/services/auth_service.dart';
@@ -12,6 +13,7 @@ import 'package:ziply_app/services/auth_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  zlog('App avviata');
   runApp(const ZiplyApp());
 }
 
@@ -55,6 +57,20 @@ class AuthGate extends StatefulWidget {
 class _AuthGateState extends State<AuthGate> {
   final AuthService _authService = AuthService();
   late final Future<String?> _tokenFuture = _authService.getToken();
+
+  @override
+  void initState() {
+    super.initState();
+    _tokenFuture.then((token) {
+      final loggedIn = token != null && token.isNotEmpty;
+      zlog(
+        loggedIn
+            ? 'Sessione trovata: apro la mappa'
+            : 'Nessuna sessione: apro il login',
+        tag: 'Auth',
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
