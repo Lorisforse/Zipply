@@ -1,10 +1,10 @@
 package handler
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 
-	"github.com/lorisforse/ziply_backend/internal/domain"
 	"github.com/lorisforse/ziply_backend/internal/usecase"
 )
 
@@ -18,12 +18,13 @@ func NewForbiddenZoneHandler(zones *usecase.ForbiddenZoneUsecase) *ForbiddenZone
 	return &ForbiddenZoneHandler{zones: zones}
 }
 
-// forbiddenZoneResponse is the JSON shape of a single forbidden zone.
+// forbiddenZoneResponse is the JSON shape of a single forbidden zone. Polygon è
+// la geometria GeoJSON grezza (Polygon o MultiPolygon), inoltrata invariata.
 type forbiddenZoneResponse struct {
-	ID       string         `json:"id"`
-	Nome     string         `json:"nome"`
-	Polygon  domain.Polygon `json:"polygon"`
-	IsActive bool           `json:"is_active"`
+	ID       string          `json:"id"`
+	Nome     string          `json:"nome"`
+	Polygon  json.RawMessage `json:"polygon"`
+	IsActive bool            `json:"is_active"`
 }
 
 // List handles GET /forbidden-zones, returning all the active forbidden zones.

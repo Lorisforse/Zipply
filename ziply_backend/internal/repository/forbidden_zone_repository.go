@@ -20,7 +20,8 @@ func NewForbiddenZoneRepository(pool *pgxpool.Pool) *ForbiddenZoneRepository {
 }
 
 // ListActive returns the forbidden zones with is_active = true. The polygon
-// JSONB column is decoded into the GeoJSON domain.Polygon.
+// JSONB column (GeoJSON Polygon o MultiPolygon) viene letta grezza e inoltrata
+// senza interpretarla.
 func (r *ForbiddenZoneRepository) ListActive(ctx context.Context) ([]domain.ForbiddenZone, error) {
 	const query = `SELECT id, nome, polygon, is_active
 		FROM forbidden_zones
@@ -39,9 +40,8 @@ func (r *ForbiddenZoneRepository) ListActive(ctx context.Context) ([]domain.Forb
 		if err := rows.Scan(&z.ID, &z.Nome, &polygon, &z.IsActive); err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal(polygon, &z.Polygon); err != nil {
-			return nil, err
-		}
+		// Copia difensiva: pgx può riutilizzare il buffer della riga.
+		z.Polygon = json.RawMessage(append([]byte(nil), polygon...))
 		zones = append(zones, z)
 	}
 	if err := rows.Err(); err != nil {

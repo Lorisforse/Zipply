@@ -430,13 +430,16 @@ class _MapScreenState extends State<MapScreen> {
             if (_forbiddenZones.isNotEmpty)
               PolygonLayer(
                 polygons: [
+                  // Un Polygon per anello: un MultiPolygon (es. quartiere con
+                  // più parti staccate) produce così più poligoni distinti.
                   for (final zone in _forbiddenZones)
-                    Polygon(
-                      points: zone.polygon,
-                      color: const Color(0x33E53935), // rosso ~20% opacità
-                      borderColor: const Color(0xFFE53935),
-                      borderStrokeWidth: 2,
-                    ),
+                    for (final ring in zone.rings)
+                      Polygon(
+                        points: ring,
+                        color: const Color(0x33E53935), // rosso ~20% opacità
+                        borderColor: const Color(0xFFE53935),
+                        borderStrokeWidth: 2,
+                      ),
                 ],
               ),
             // Percorso a piedi verso il mezzo prenotato (sotto i marker).
