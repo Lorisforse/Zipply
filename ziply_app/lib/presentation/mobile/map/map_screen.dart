@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
+import 'package:ziply_app/data/models/forbidden_zone_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
 import 'package:ziply_app/presentation/mobile/booking/screens/booking_cancelled_screen.dart';
@@ -17,6 +18,7 @@ import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 import 'package:ziply_app/services/auth_service.dart';
 import 'package:ziply_app/services/booking_service.dart';
+import 'package:ziply_app/services/forbidden_zone_service.dart';
 import 'package:ziply_app/services/routing_service.dart';
 import 'package:ziply_app/services/vehicle_service.dart';
 
@@ -56,11 +58,15 @@ class _MapScreenState extends State<MapScreen> {
   final AuthService _authService = AuthService();
   final RoutingService _routingService = RoutingService();
   final BookingService _bookingService = BookingService();
+  final ForbiddenZoneService _forbiddenZoneService = ForbiddenZoneService();
   final MapController _mapController = MapController();
 
   _ViewState _state = _ViewState.loading;
   String? _errorMessage;
   List<VehicleModel> _vehicles = const [];
+  // UT.18 — Zone vietate: overlay non critico. Un eventuale errore nel
+  // recupero non blocca la mappa (resta semplicemente senza poligoni).
+  List<ForbiddenZoneModel> _forbiddenZones = const [];
   LatLng _center = _kZootropolisCenter;
   LatLng? _userPosition;
 
@@ -118,11 +124,13 @@ class _MapScreenState extends State<MapScreen> {
         center = _kZootropolisCenter;
         vehicles = await _vehicleService.getAvailableVehicles();
       }
+      final forbiddenZones = await _loadForbiddenZones();
       if (!mounted) return;
       setState(() {
         _userPosition = userPos;
         _center = center;
         _vehicles = vehicles;
+        _forbiddenZones = forbiddenZones;
         _state = _ViewState.success;
       });
     } on SessionExpiredException {
@@ -154,6 +162,18 @@ class _MapScreenState extends State<MapScreen> {
       return LatLng(pos.latitude, pos.longitude);
     } catch (_) {
       return null;
+    }
+  }
+
+  /// UT.18 — Recupera le zone vietate da disegnare sulla mappa. È un overlay
+  /// secondario: in caso di errore restituisce una lista vuota senza far
+  /// fallire il caricamento della mappa (stesso spirito di [_loadWalkingRoute]).
+  Future<List<ForbiddenZoneModel>> _loadForbiddenZones() async {
+    try {
+      return await _forbiddenZoneService.getForbiddenZones();
+    } on Exception catch (e) {
+      debugPrint('forbidden zones load failed: $e');
+      return const [];
     }
   }
 
@@ -405,6 +425,20 @@ class _MapScreenState extends State<MapScreen> {
               retinaMode: RetinaMode.isHighDensity(context),
               userAgentPackageName: 'it.lorisamato.ziply',
             ),
+            // UT.18 — Zone vietate: poligoni rossi semi-trasparenti, sopra le
+            // tile ma sotto percorso e marker.
+            if (_forbiddenZones.isNotEmpty)
+              PolygonLayer(
+                polygons: [
+                  for (final zone in _forbiddenZones)
+                    Polygon(
+                      points: zone.polygon,
+                      color: const Color(0x33E53935), // rosso ~20% opacità
+                      borderColor: const Color(0xFFE53935),
+                      borderStrokeWidth: 2,
+                    ),
+                ],
+              ),
             // Percorso a piedi verso il mezzo prenotato (sotto i marker).
             if (_walkingRoute.length >= 2)
               PolylineLayer(

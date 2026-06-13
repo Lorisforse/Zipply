@@ -36,11 +36,16 @@ func main() {
 	bookingUsecase := usecase.NewBookingUsecase(bookingRepo)
 	bookingHandler := handler.NewBookingHandler(bookingUsecase)
 
+	forbiddenZoneRepo := repository.NewForbiddenZoneRepository(pool)
+	forbiddenZoneUsecase := usecase.NewForbiddenZoneUsecase(forbiddenZoneRepo)
+	forbiddenZoneHandler := handler.NewForbiddenZoneHandler(forbiddenZoneUsecase)
+
 	mux := http.NewServeMux()
 
 	// Public routes.
 	mux.HandleFunc("POST /auth/register", authHandler.Register)
 	mux.HandleFunc("POST /auth/login", authHandler.Login)
+	mux.HandleFunc("GET /forbidden-zones", forbiddenZoneHandler.List)
 
 	// Authenticated routes (JWT Bearer).
 	mux.Handle("GET /vehicles", middleware.JWTAuth(http.HandlerFunc(vehicleHandler.List)))
