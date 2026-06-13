@@ -146,6 +146,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     // fix #1 – hero proporzionale all'altezza schermo
     final screenH = MediaQuery.of(context).size.height;
+    // fix 4b – con la tastiera aperta l'hero si ritrae per non coprire i campi.
+    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    final fullHeroHeight = screenH * 0.37;
+    final heroHeight = keyboardOpen ? screenH * 0.12 : fullHeroHeight;
 
     return Scaffold(
       backgroundColor: _kBg,
@@ -153,58 +157,25 @@ class _LoginScreenState extends State<LoginScreen> {
       resizeToAvoidBottomInset: true,
       body: Column(
         children: [
-          // ── HERO ─────────────────────────────────────────────────────────
-          // fix #1 – altezza hero proporzionale allo schermo
-          SizedBox(
-            height: screenH * 0.37,
-            child: Stack(
-              children: [
-                const Positioned.fill(child: ColoredBox(color: _kBg)),
-                // glow overlay 225° (topRight → bottomLeft)
-                Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topRight,
-                        end: Alignment.bottomLeft,
-                        stops: const [0, 0.28, 0.58, 0.84],
-                        colors: [
-                          _kAccent.withValues(alpha: 0.45),
-                          _kAccent.withValues(alpha: 0.26),
-                          _kAccent.withValues(alpha: 0.08),
-                          _kAccent.withValues(alpha: 0),
-                        ],
-                      ),
-                    ),
-                  ),
+          // ── HERO (fix 4b – si ritrae con la tastiera aperta) ─────────────
+          // L'hero è sempre dimensionato a piena altezza ma viene clippato dal
+          // contenitore che si restringe (ancorato in alto): così niente
+          // overflow del RenderFlex e l'illustrazione scompare gradualmente
+          // mentre il wordmark resta visibile.
+          ClipRect(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeInOut,
+              height: heroHeight,
+              child: OverflowBox(
+                minHeight: 0,
+                maxHeight: fullHeroHeight,
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  height: fullHeroHeight,
+                  child: const _FullHero(),
                 ),
-                Positioned.fill(
-                  child: SafeArea(
-                    bottom: false,
-                    child: Column(
-                      children: [
-                        const SizedBox(height: 32),
-                        Text('ZIPLY', style: _cond(size: 36, ls: 3.0)),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Muoviti. Ovunque.',
-                          style: _body(size: 13, c: Colors.white.withValues(alpha: 0.65)),
-                        ),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                            child: SvgPicture.asset(
-                              'assets/images/scooter.svg',
-                              fit: BoxFit.contain,
-                              alignment: Alignment.center,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
 
@@ -407,6 +378,64 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Hero esteso (logo + tagline + illustrazione) ───────────────────────────
+class _FullHero extends StatelessWidget {
+  const _FullHero();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        const Positioned.fill(child: ColoredBox(color: _kBg)),
+        // glow overlay 225° (topRight → bottomLeft)
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topRight,
+                end: Alignment.bottomLeft,
+                stops: const [0, 0.28, 0.58, 0.84],
+                colors: [
+                  _kAccent.withValues(alpha: 0.45),
+                  _kAccent.withValues(alpha: 0.26),
+                  _kAccent.withValues(alpha: 0.08),
+                  _kAccent.withValues(alpha: 0),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                const SizedBox(height: 32),
+                Text('ZIPLY', style: _cond(size: 36, ls: 3.0)),
+                const SizedBox(height: 4),
+                Text(
+                  'Muoviti. Ovunque.',
+                  style: _body(size: 13, c: Colors.white.withValues(alpha: 0.65)),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                    child: SvgPicture.asset(
+                      'assets/images/scooter.svg',
+                      fit: BoxFit.contain,
+                      alignment: Alignment.center,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

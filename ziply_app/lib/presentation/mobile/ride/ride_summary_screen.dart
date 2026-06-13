@@ -66,7 +66,9 @@ class RideSummaryScreen extends StatefulWidget {
   final double cost;
 
   /// Apre la schermata sostituendo la rotta corrente: dopo aver terminato non
-  /// si torna alla schermata di noleggio (ormai conclusa).
+  /// si torna alla schermata di noleggio (ormai conclusa). Entra con una
+  /// dissolvenza + leggero scorrimento verso l'alto, per staccare dalla corsa
+  /// senza il push laterale di default.
   static Future<void> show(
     BuildContext context, {
     required RideModel ride,
@@ -75,13 +77,29 @@ class RideSummaryScreen extends StatefulWidget {
     required double cost,
   }) {
     return Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => RideSummaryScreen(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 420),
+        reverseTransitionDuration: const Duration(milliseconds: 280),
+        pageBuilder: (_, __, ___) => RideSummaryScreen(
           ride: ride,
           vehicle: vehicle,
           duration: duration,
           cost: cost,
         ),
+        transitionsBuilder: (context, animation, _, child) {
+          final curved =
+              CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.06),
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            ),
+          );
+        },
       ),
     );
   }

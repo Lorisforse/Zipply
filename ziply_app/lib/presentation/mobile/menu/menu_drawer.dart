@@ -110,14 +110,53 @@ class _MenuDrawerState extends State<MenuDrawer> {
     );
   }
 
-  /// Logout: pulisce il token e torna al login svuotando lo stack.
+  /// Logout: azione distruttiva, quindi prima chiede conferma; solo se
+  /// confermata pulisce il token e torna al login svuotando lo stack.
   Future<void> _logout() async {
+    final confirmed = await _confirmLogout();
+    if (confirmed != true || !mounted) return;
     final navigator = Navigator.of(context);
     await _authService.logout();
     if (!mounted) return;
     navigator.pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
+    );
+  }
+
+  /// Dialog di conferma prima del logout (stesso stile di [_confirmCancel]
+  /// della mappa).
+  Future<bool?> _confirmLogout() {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF252525),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        title: Text(
+          'Vuoi uscire?',
+          style: _cond(size: 22, c: _kText),
+        ),
+        content: Text(
+          'Dovrai accedere di nuovo la prossima volta che apri Ziply.',
+          style: _body(size: 14, c: _kDim),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'ANNULLA',
+              style: _cond(size: 16, c: _kDim, ls: 0.5),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+              'ESCI',
+              style: _cond(size: 16, c: _kAccent, ls: 0.5),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

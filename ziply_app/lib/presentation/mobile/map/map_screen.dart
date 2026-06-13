@@ -62,7 +62,7 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final VehicleService _vehicleService = VehicleService();
   final AuthService _authService = AuthService();
   final RoutingService _routingService = RoutingService();
@@ -96,6 +96,15 @@ class _MapScreenState extends State<MapScreen> {
   // UT.13 — guardia anti doppio-sblocco mentre la chiamata è in corso.
   bool _unlocking = false;
 
+  // Auto-refresh mezzi: la lista è una "fotografia" all'apertura, qui la
+  // riallineiamo silenziosamente ogni 10 s (solo in browse mode).
+  Timer? _refreshTimer;
+  static const Duration _kRefreshInterval = Duration(seconds: 10);
+
+  // Contatore che innesca il "ping" sul puntino utente al recenter: ogni
+  // incremento fa partire un'onda one-shot in [_UserDot].
+  int _recenterPing = 0;
+
   // Filtro mezzi attivo (browse mode).
   _VehicleFilter _filter = _VehicleFilter.all;
 
@@ -123,12 +132,47 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _load();
+    _startAutoRefresh();
   }
 
   @override
   void dispose() {
     _positionSub?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
+  }
+
+  /// Avvia il refresh periodico dei mezzi (idempotente). Il timer resta sempre
+  /// attivo; è [_refreshVehicles] a decidere quando saltare un giro.
+  void _startAutoRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(_kRefreshInterval, (_) => _refreshVehicles());
+  }
+
+  /// Riallinea silenziosamente la lista mezzi, senza toccare camera né stato di
+  /// caricamento. Salta il giro se la mappa non è pronta o se c'è una
+  /// prenotazione attiva (lì i marker seguono la prenotazione, non la lista).
+  /// In caso di errore mantiene la lista corrente.
+  Future<void> _refreshVehicles() async {
+    if (_state != _ViewState.success || _activeBooking != null) return;
+    try {
+      final pos = _userPosition;
+      final vehicles = pos != null
+          ? await _vehicleService.getAvailableVehicles(
+              lat: pos.latitude,
+              lng: pos.longitude,
+              radius: _kRadiusKm,
+            )
+          : await _vehicleService.getAvailableVehicles();
+      // Tra l'await e qui lo stato può essere cambiato (prenotazione avviata,
+      // schermata chiusa): riverifica prima di applicare.
+      if (!mounted || _state != _ViewState.success || _activeBooking != null) {
+        return;
+      }
+      setState(() => _vehicles = vehicles);
+    } on Exception {
+      // Refresh silenzioso: ignora l'errore e riprova al prossimo giro.
+    }
   }
 
   /// Risolve la posizione, recupera i mezzi e gestisce i tre stati UI.
@@ -242,8 +286,58 @@ class _MapScreenState extends State<MapScreen> {
     return null;
   }
 
+  /// Centra (animato) sulla posizione utente. Se il GPS non è disponibile
+  /// avvisa invece di saltare sul centro di fallback, e innesca il "ping" sul
+  /// puntino per dare conferma anche quando sei già al centro.
   void _recenter() {
-    _mapController.move(_center, _kZoom);
+    final pos = _userPosition;
+    if (pos == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: _kSurface,
+          content: Text(
+            'Attiva la localizzazione per trovarti sulla mappa',
+            style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+          ),
+        ),
+      );
+      return;
+    }
+    _animatedMapMove(pos, _kZoom);
+    setState(() => _recenterPing++);
+  }
+
+  /// Sposta la camera verso [dest]/[destZoom] interpolando centro e zoom, invece
+  /// dello scatto secco di [MapController.move]. Usato sia dal recenter sia dal
+  /// tap sul cluster (lo zoom graduale scioglie naturalmente l'aggregato).
+  void _animatedMapMove(LatLng dest, double destZoom) {
+    final camera = _mapController.camera;
+    final latTween =
+        Tween<double>(begin: camera.center.latitude, end: dest.latitude);
+    final lngTween =
+        Tween<double>(begin: camera.center.longitude, end: dest.longitude);
+    final zoomTween = Tween<double>(begin: camera.zoom, end: destZoom);
+
+    final controller = AnimationController(
+      duration: const Duration(milliseconds: 650),
+      vsync: this,
+    );
+    final animation =
+        CurvedAnimation(parent: controller, curve: Curves.easeInOutCubic);
+
+    controller.addListener(() {
+      _mapController.move(
+        LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
+        zoomTween.evaluate(animation),
+      );
+    });
+    controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed ||
+          status == AnimationStatus.dismissed) {
+        controller.dispose();
+      }
+    });
+    controller.forward();
   }
 
   /// Apre la lista "mezzi vicini" (solo via pulsante). Al tap su una riga apre
@@ -587,13 +681,22 @@ class _MapScreenState extends State<MapScreen> {
   Widget _buildBody(BuildContext context) {
     switch (_state) {
       case _ViewState.loading:
-        return const Center(
-          child: CircularProgressIndicator(color: _kAccent, strokeWidth: 2.5),
-        );
+        return const _BrandLoader();
       case _ViewState.error:
         return _ErrorView(message: _errorMessage, onRetry: _load);
       case _ViewState.success:
-        return _buildMap(context);
+        // La mappa entra in dissolvenza (+ micro scale) quando i dati sono
+        // pronti, raccordandosi al wordmark pulsante del loader.
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeOut,
+          builder: (context, t, child) => Opacity(
+            opacity: t,
+            child: Transform.scale(scale: 1.02 - 0.02 * t, child: child),
+          ),
+          child: _buildMap(context),
+        );
     }
   }
 
@@ -726,7 +829,13 @@ class _MapScreenState extends State<MapScreen> {
               rotate: true, // resta dritto quando la mappa viene ruotata
               child: GestureDetector(
                 onTap: () => _onVehicleTap(v),
-                child: VehicleMarker(kind: v.kind, batteryLevel: v.batteryLevel),
+                // Scatto-in quando il mezzo emerge da un cluster (key per id:
+                // finché resta singolo non si ripete).
+                child: _PopIn(
+                  key: ValueKey('veh-${v.id}'),
+                  child:
+                      VehicleMarker(kind: v.kind, batteryLevel: v.batteryLevel),
+                ),
               ),
             ),
           );
@@ -750,9 +859,10 @@ class _MapScreenState extends State<MapScreen> {
       markers.add(
         Marker(
           point: _userPosition!,
-          width: 20,
-          height: 20,
-          child: const _UserDot(),
+          // Box più ampio del puntino per contenere l'alone pulsante.
+          width: 56,
+          height: 56,
+          child: _UserDot(key: const ValueKey('user-dot'), ping: _recenterPing),
         ),
       );
     }
@@ -824,10 +934,12 @@ class _MapScreenState extends State<MapScreen> {
     return clusters;
   }
 
-  /// Tap su un cluster: zoom-in verso il suo centro per separare i mezzi.
+  /// Tap su un cluster: zoom-in animato verso il suo centro. Lo zoom graduale
+  /// fa "scomporre" l'aggregato nei singoli mezzi durante l'animazione (il
+  /// clustering è ricalcolato a ogni frame in base alla camera).
   void _onClusterTap(_Cluster cluster) {
     final target = (_mapController.camera.zoom + 2).clamp(1.0, 18.0);
-    _mapController.move(cluster.center, target);
+    _animatedMapMove(cluster.center, target);
   }
 }
 
@@ -1152,30 +1264,208 @@ class _ForbiddenZoneBanner extends StatelessWidget {
 }
 
 // ── User location dot ──────────────────────────────────────────────────────
-class _UserDot extends StatelessWidget {
-  const _UserDot();
+/// Puntino utente "vivo": un alone tenue che respira di continuo (così la
+/// posizione sembra in tempo reale) e un'onda one-shot più ampia che parte a
+/// ogni recenter, innescata dall'incremento di [ping].
+class _UserDot extends StatefulWidget {
+  const _UserDot({super.key, required this.ping});
+
+  /// Contatore di "ping": quando cambia, parte l'onda one-shot di conferma.
+  final int ping;
+
+  @override
+  State<_UserDot> createState() => _UserDotState();
+}
+
+class _UserDotState extends State<_UserDot> with TickerProviderStateMixin {
+  static const Color _kDotColor = Color(0xFFD4580A);
+
+  // Respiro lento e continuo dell'alone di accuratezza.
+  late final AnimationController _idle = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2200),
+  )..repeat();
+
+  // Onda one-shot di conferma al recenter.
+  late final AnimationController _pingCtrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  );
+
+  @override
+  void didUpdateWidget(covariant _UserDot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.ping != oldWidget.ping) {
+      _pingCtrl.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _idle.dispose();
+    _pingCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 20,
-      height: 20,
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-        shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFFD4580A), width: 2),
-      ),
-      child: Center(
-        child: Container(
-          width: 10,
-          height: 10,
-          decoration: const BoxDecoration(
-            color: Color(0xFFD4580A),
-            shape: BoxShape.circle,
+    return AnimatedBuilder(
+      animation: Listenable.merge([_idle, _pingCtrl]),
+      builder: (context, _) {
+        final idleT = _idle.value;
+        final idleScale = 1.0 + 0.9 * idleT;
+        final idleOpacity = (1 - idleT) * 0.16;
+
+        final pingT = _pingCtrl.value;
+        final showPing = _pingCtrl.isAnimating;
+        final pingScale = 1.0 + 2.6 * pingT;
+        final pingOpacity = (1 - pingT) * 0.5;
+
+        return SizedBox(
+          width: 56,
+          height: 56,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Alone idle (respiro continuo).
+              Transform.scale(
+                scale: idleScale,
+                child: Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _kDotColor.withValues(alpha: idleOpacity),
+                  ),
+                ),
+              ),
+              // Onda di conferma (solo durante il ping).
+              if (showPing)
+                Transform.scale(
+                  scale: pingScale,
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: _kDotColor.withValues(alpha: pingOpacity),
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                ),
+              // Puntino centrale.
+              Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: _kDotColor, width: 2),
+                ),
+                child: Center(
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: _kDotColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ),
+        );
+      },
+    );
+  }
+}
+
+// ── Loader brandizzato (wordmark ZIPLY pulsante) ───────────────────────────
+/// Schermata di attesa mentre la mappa carica: il wordmark "ZIPLY" respira
+/// (opacità + scala) finché i dati non sono pronti, poi la mappa entra in
+/// dissolvenza (vedi [_buildBody]).
+class _BrandLoader extends StatefulWidget {
+  const _BrandLoader();
+
+  @override
+  State<_BrandLoader> createState() => _BrandLoaderState();
+}
+
+class _BrandLoaderState extends State<_BrandLoader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final t = Curves.easeInOut.transform(_controller.value);
+          return Opacity(
+            opacity: 0.55 + 0.45 * t,
+            child: Transform.scale(
+              scale: 0.96 + 0.06 * t,
+              child: Text(
+                'ZIPLY',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 44,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 3,
+                  color: _kAccent,
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
+  }
+}
+
+// ── Scatto-in marker (emersione da cluster) ────────────────────────────────
+/// Fa comparire il [child] con un breve scale-in. Con una [key] stabile per
+/// mezzo l'animazione parte una sola volta, quando il marker passa da cluster a
+/// singolo, e non si ripete a ogni rebuild della mappa.
+class _PopIn extends StatefulWidget {
+  const _PopIn({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<_PopIn> createState() => _PopInState();
+}
+
+class _PopInState extends State<_PopIn> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 220),
+  )..forward();
+
+  late final Animation<double> _scale = Tween<double>(begin: 0.6, end: 1).animate(
+    CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(scale: _scale, child: widget.child);
   }
 }
 
