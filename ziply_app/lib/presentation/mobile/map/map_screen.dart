@@ -15,6 +15,7 @@ import 'package:ziply_app/presentation/mobile/map/widgets/nearby_vehicles_sheet.
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_bottom_sheet.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
+import 'package:ziply_app/presentation/mobile/payment/payment_methods_screen.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 import 'package:ziply_app/services/auth_service.dart';
 import 'package:ziply_app/services/booking_service.dart';
@@ -731,6 +732,18 @@ class _Header extends StatelessWidget {
               fontWeight: FontWeight.w600,
               letterSpacing: 1.5,
               color: _kDim,
+            ),
+          ),
+          const Spacer(),
+          // UT.14 — accesso ai metodi di pagamento.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PaymentMethodsScreen()),
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.credit_card, color: _kAccent, size: 22),
             ),
           ),
         ],

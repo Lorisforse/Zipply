@@ -40,6 +40,10 @@ func main() {
 	forbiddenZoneUsecase := usecase.NewForbiddenZoneUsecase(forbiddenZoneRepo)
 	forbiddenZoneHandler := handler.NewForbiddenZoneHandler(forbiddenZoneUsecase)
 
+	paymentMethodRepo := repository.NewPaymentMethodRepository(pool)
+	paymentMethodUsecase := usecase.NewPaymentMethodUsecase(paymentMethodRepo)
+	paymentMethodHandler := handler.NewPaymentMethodHandler(paymentMethodUsecase)
+
 	mux := http.NewServeMux()
 
 	// Public routes.
@@ -51,6 +55,9 @@ func main() {
 	mux.Handle("GET /vehicles", middleware.JWTAuth(http.HandlerFunc(vehicleHandler.List)))
 	mux.Handle("POST /bookings", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Create)))
 	mux.Handle("POST /bookings/{id}/cancel", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Cancel)))
+	mux.Handle("POST /payment-methods", middleware.JWTAuth(http.HandlerFunc(paymentMethodHandler.Create)))
+	mux.Handle("GET /payment-methods", middleware.JWTAuth(http.HandlerFunc(paymentMethodHandler.List)))
+	mux.Handle("DELETE /payment-methods/{id}", middleware.JWTAuth(http.HandlerFunc(paymentMethodHandler.Delete)))
 
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
