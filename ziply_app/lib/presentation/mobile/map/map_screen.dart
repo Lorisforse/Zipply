@@ -275,16 +275,24 @@ class _MapScreenState extends State<MapScreen> {
     return list;
   }
 
-  /// UT.05 + UT.02 + UT.13 — Apre la scheda mezzo; al ritorno gestisce l'esito:
-  /// sblocco diretto → schermata noleggio; prenotazione → resta sulla mappa in
-  /// modalità "raggiungi il mezzo"; errore → snackbar.
+  /// UT.05 + UT.02 + UT.13 — Apre la scheda mezzo al tap sul marker; al ritorno
+  /// gestisce l'esito.
   Future<void> _onVehicleTap(VehicleModel vehicle) async {
     // Con una prenotazione attiva gli altri marker sono spenti e inerti.
     if (_activeBooking != null) return;
 
     final result = await VehicleBottomSheet.show(context, vehicle, _userPosition);
     if (result == null || !mounted) return;
+    await _handleSheetResult(result, vehicle);
+  }
 
+  /// Gestisce l'esito della scheda mezzo: sblocco → schermata noleggio;
+  /// prenotazione → resta sulla mappa in modalità "raggiungi il mezzo";
+  /// errore → snackbar.
+  Future<void> _handleSheetResult(
+    VehicleBookingResult result,
+    VehicleModel vehicle,
+  ) async {
     if (result.isUnlocked) {
       await _openRide(result.ride!, vehicle);
     } else if (result.isSuccess) {
@@ -445,52 +453,45 @@ class _MapScreenState extends State<MapScreen> {
     await _performUnlock(() => _rideService.unlockByProximity(vehicle.id), vehicle);
   }
 
-  /// UT.13 — Sblocco via QR (globale): apre lo scanner, sblocca il mezzo letto
-  /// (non serve prenotazione) e apre la schermata di noleggio. Il mezzo viene
-  /// risolto dalla lista già caricata tramite il vehicle_id della corsa.
+  /// UT.13 — Scansione QR (globale): apre lo scanner, individua il mezzo dal
+  /// codice tra quelli già caricati e ne apre la scheda (tendina con
+  /// SBLOCCA/PRENOTA). Lo sblocco da quella scheda avviene via QR — la
+  /// scansione prova che sei davanti al mezzo — quindi senza vincolo di distanza.
   Future<void> _onScanQr() async {
-    if (_unlocking) return;
     final code = await QrScanScreen.show(context);
     if (code == null || !mounted) return;
 
-    setState(() => _unlocking = true);
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final ride = await _rideService.unlockByQr(code);
-      if (!mounted) return;
-      setState(() => _unlocking = false);
-      final vehicle = _vehicleForRide(ride);
-      if (vehicle == null) {
-        // Mezzo non presente tra quelli caricati: ricarica e basta.
-        messenger.showSnackBar(
-          SnackBar(
-            backgroundColor: _kSurface,
-            content: Text(
-              'Mezzo sbloccato',
-              style: GoogleFonts.barlow(fontSize: 14, color: _kText),
-            ),
-          ),
-        );
-        _load();
-        return;
-      }
-      await _openRide(ride, vehicle);
-    } on SessionExpiredException {
-      if (mounted) setState(() => _unlocking = false);
-      await _handleSessionExpired();
-    } on Exception catch (e) {
-      if (!mounted) return;
-      setState(() => _unlocking = false);
-      messenger.showSnackBar(
+    final vehicle = _vehicleForQr(code);
+    if (vehicle == null) {
+      // Codice non corrispondente a un mezzo disponibile nelle vicinanze.
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: _kSurface,
           content: Text(
-            e.toString().replaceFirst('Exception: ', ''),
+            'Mezzo non trovato tra quelli disponibili nelle vicinanze',
             style: GoogleFonts.barlow(fontSize: 14, color: _kText),
           ),
         ),
       );
+      return;
     }
+
+    final result = await VehicleBottomSheet.show(
+      context,
+      vehicle,
+      _userPosition,
+      unlockQrCode: code,
+    );
+    if (result == null || !mounted) return;
+    await _handleSheetResult(result, vehicle);
+  }
+
+  /// Mezzo con il [qrCode] indicato tra quelli caricati sulla mappa.
+  VehicleModel? _vehicleForQr(String qrCode) {
+    for (final v in _vehicles) {
+      if (v.qrCode == qrCode) return v;
+    }
+    return null;
   }
 
   /// Esegue lo sblocco per prossimità ([unlock]) mostrando il loading, poi apre
@@ -522,14 +523,6 @@ class _MapScreenState extends State<MapScreen> {
         ),
       );
     }
-  }
-
-  /// Mezzo corrispondente alla corsa (per `vehicle_id`) tra quelli caricati.
-  VehicleModel? _vehicleForRide(RideModel ride) {
-    for (final v in _vehicles) {
-      if (v.id == ride.vehicleId) return v;
-    }
-    return null;
   }
 
   /// Libera lo stato di prenotazione (ormai consumata), apre la schermata di

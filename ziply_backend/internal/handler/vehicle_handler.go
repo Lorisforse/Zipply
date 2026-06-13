@@ -26,6 +26,7 @@ func NewVehicleHandler(vehicles *usecase.VehicleUsecase) *VehicleHandler {
 type vehicleResponse struct {
 	ID           string  `json:"id"`
 	Type         string  `json:"type"`
+	QrCode       string  `json:"qr_code"`
 	Latitude     float64 `json:"latitude"`
 	Longitude    float64 `json:"longitude"`
 	BatteryLevel int     `json:"battery_level"`
@@ -53,6 +54,7 @@ func (h *VehicleHandler) List(w http.ResponseWriter, r *http.Request) {
 		resp.Vehicles = append(resp.Vehicles, vehicleResponse{
 			ID:           v.ID,
 			Type:         v.Type,
+			QrCode:       v.QrCode,
 			Latitude:     v.Latitude,
 			Longitude:    v.Longitude,
 			BatteryLevel: v.BatteryLevel,

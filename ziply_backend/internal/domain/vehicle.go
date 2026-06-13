@@ -6,6 +6,7 @@ package domain
 type Vehicle struct {
 	ID              string
 	Type            string // vehicle_types.nome (es. 'Bicicletta')
+	QrCode          string // codice stampato sul mezzo, usato per lo sblocco via QR
 	Latitude        float64
 	Longitude       float64
 	BatteryLevel    int

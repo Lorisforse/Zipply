@@ -52,6 +52,7 @@ class VehicleBottomSheet extends StatefulWidget {
     super.key,
     required this.vehicle,
     this.userPosition,
+    this.unlockQrCode,
   });
 
   final VehicleModel vehicle;
@@ -60,14 +61,20 @@ class VehicleBottomSheet extends StatefulWidget {
   /// disponibile → la distanza viene mostrata come «—»).
   final LatLng? userPosition;
 
+  /// Quando la scheda è aperta dopo la scansione del QR del mezzo, contiene il
+  /// codice letto: lo sblocco è sempre abilitato (la scansione prova che sei
+  /// davanti al mezzo) e avviene via QR anziché per prossimità.
+  final String? unlockQrCode;
+
   /// Apre la scheda come modal bottom sheet: si chiude con swipe verso il
   /// basso o tap fuori (comportamento di default di [showModalBottomSheet]).
-  /// Restituisce l'esito della prenotazione, o null se l'utente la chiude.
+  /// Restituisce l'esito (prenotazione o sblocco), o null se l'utente la chiude.
   static Future<VehicleBookingResult?> show(
     BuildContext context,
     VehicleModel vehicle,
-    LatLng? userPosition,
-  ) {
+    LatLng? userPosition, {
+    String? unlockQrCode,
+  }) {
     return showModalBottomSheet<VehicleBookingResult>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -75,6 +82,7 @@ class VehicleBottomSheet extends StatefulWidget {
       builder: (_) => VehicleBottomSheet(
         vehicle: vehicle,
         userPosition: userPosition,
+        unlockQrCode: unlockQrCode,
       ),
     );
   }
@@ -89,10 +97,11 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
   bool _isBooking = false;
   bool _isUnlocking = false;
 
-  /// True quando l'utente è abbastanza vicino al mezzo da poterlo sbloccare
-  /// per prossimità (≤ 50 m). Se la posizione non è nota, lo sblocco di
-  /// prossimità non è disponibile (resta il QR dalla mappa).
+  /// True quando lo sblocco è possibile. Se la scheda è aperta da scansione QR
+  /// è sempre possibile (la scansione prova la presenza davanti al mezzo);
+  /// altrimenti serve essere entro 50 m (sblocco per prossimità).
   bool get _canUnlock {
+    if (widget.unlockQrCode != null) return true;
     final from = widget.userPosition;
     if (from == null) return false;
     final meters = Geolocator.distanceBetween(
@@ -124,15 +133,19 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
     navigator.pop(result);
   }
 
-  /// UT.13 — Sblocca direttamente il mezzo per prossimità (senza prenotare),
-  /// poi chiude la scheda restituendo la corsa avviata al chiamante (la mappa).
+  /// UT.13 — Sblocca direttamente il mezzo (senza prenotare): via QR se la
+  /// scheda è stata aperta da scansione, altrimenti per prossimità. Poi chiude
+  /// la scheda restituendo la corsa avviata al chiamante (la mappa).
   Future<void> _unlock() async {
     setState(() => _isUnlocking = true);
     final navigator = Navigator.of(context);
 
+    final qrCode = widget.unlockQrCode;
     VehicleBookingResult result;
     try {
-      final ride = await _rideService.unlockByProximity(widget.vehicle.id);
+      final ride = qrCode != null
+          ? await _rideService.unlockByQr(qrCode)
+          : await _rideService.unlockByProximity(widget.vehicle.id);
       result = VehicleBookingResult.unlocked(ride);
     } on Exception catch (e) {
       result = VehicleBookingResult.failure(

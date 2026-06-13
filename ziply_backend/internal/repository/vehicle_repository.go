@@ -21,7 +21,7 @@ func NewVehicleRepository(pool *pgxpool.Pool) *VehicleRepository {
 // ListAvailable returns the vehicles with status 'disponibile', joined with their type.
 // When filter is non-nil the result is restricted to the Haversine distance radius (km).
 func (r *VehicleRepository) ListAvailable(ctx context.Context, filter *domain.GeoFilter) ([]domain.Vehicle, error) {
-	query := `SELECT v.id, vt.nome, v.latitude, v.longitude, v.battery_level, vt.tariffa_al_minuto
+	query := `SELECT v.id, vt.nome, v.qr_code, v.latitude, v.longitude, v.battery_level, vt.tariffa_al_minuto
 		FROM vehicles v
 		JOIN vehicle_types vt ON vt.id = v.type_id
 		WHERE v.status = 'disponibile'`
@@ -47,7 +47,7 @@ func (r *VehicleRepository) ListAvailable(ctx context.Context, filter *domain.Ge
 	for rows.Next() {
 		var v domain.Vehicle
 		if err := rows.Scan(
-			&v.ID, &v.Type, &v.Latitude, &v.Longitude, &v.BatteryLevel, &v.TariffaAlMinuto,
+			&v.ID, &v.Type, &v.QrCode, &v.Latitude, &v.Longitude, &v.BatteryLevel, &v.TariffaAlMinuto,
 		); err != nil {
 			return nil, err
 		}

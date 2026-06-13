@@ -60,6 +60,10 @@ class _QrScanScreenState extends State<QrScanScreen> {
     return Scaffold(
       backgroundColor: _kBg,
       body: Stack(
+        // Riempie lo schermo: senza questo lo Stack si dimensionerebbe sull'unico
+        // figlio non-Positioned (la barra in alto) e la camera resterebbe un
+        // quadratino in alto.
+        fit: StackFit.expand,
         children: [
           // Anteprima fotocamera a schermo intero.
           Positioned.fill(
@@ -72,26 +76,31 @@ class _QrScanScreenState extends State<QrScanScreen> {
           // Velo scuro attorno al riquadro di scansione.
           const Positioned.fill(child: _ScannerOverlay()),
           // Top bar: wordmark + chiudi.
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 8, 0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'ZIPLY',
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 23,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                      color: _kAccent,
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 8, 8, 0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'ZIPLY',
+                      style: GoogleFonts.barlowCondensed(
+                        fontSize: 23,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1,
+                        color: _kAccent,
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).maybePop(),
-                    icon: const Icon(Icons.close, color: _kText),
-                  ),
-                ],
+                    IconButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.close, color: _kText),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

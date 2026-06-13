@@ -23,6 +23,7 @@ class VehicleModel {
     required this.id,
     required this.type,
     required this.kind,
+    required this.qrCode,
     required this.latitude,
     required this.longitude,
     required this.batteryLevel,
@@ -32,6 +33,9 @@ class VehicleModel {
   final String id;
   final String type; // nome esatto dal DB (es. 'Bicicletta')
   final VehicleType kind;
+
+  /// Codice stampato sul mezzo, usato per abbinare lo sblocco via QR.
+  final String qrCode;
   final double latitude;
   final double longitude;
   final int batteryLevel;
@@ -43,6 +47,7 @@ class VehicleModel {
       id: json['id'] as String,
       type: nome,
       kind: _vehicleTypeFromNome(nome),
+      qrCode: (json['qr_code'] as String?) ?? '',
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),
       batteryLevel: (json['battery_level'] as num).toInt(),
