@@ -159,8 +159,19 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
     return diff < 0 ? 0 : diff;
   }
 
-  /// Costo corrente: minuti trascorsi × tariffa al minuto.
-  double get _cost => (_elapsedSeconds / 60) * _ratePerMinute;
+  /// Minuti addebitati: l'importo non cambia ogni secondo ma a "scatti di
+  /// minuto" (per non addebitare cifre irrisorie tipo 0,03 €). Sotto i 20
+  /// secondi è gratis; dai 20 secondi in poi si paga 1 minuto pieno; ogni
+  /// secondo oltre il minuto pieno fa scattare il minuto successivo
+  /// (es. 01:01 → 2 minuti). Cioè: 0 se < 20 s, altrimenti ceil(secondi/60).
+  int get _chargedMinutes {
+    final sec = _elapsedSeconds;
+    if (sec < 20) return 0;
+    return (sec / 60).ceil();
+  }
+
+  /// Costo corrente: minuti addebitati × tariffa al minuto.
+  double get _cost => _chargedMinutes * _ratePerMinute;
 
   String _formatElapsed(int sec) {
     final h = sec ~/ 3600;

@@ -707,7 +707,6 @@ class _MapScreenState extends State<MapScreen> {
               canUnlockByProximity: _canUnlockByProximity(),
               unlocking: _unlocking,
               onUnlockProximity: _onUnlockProximity,
-              onUnlockQr: _onScanQr,
               onCancel: _onCancelBooking,
             ),
           ),
@@ -1195,7 +1194,6 @@ class _BookingPanel extends StatefulWidget {
     required this.canUnlockByProximity,
     required this.unlocking,
     required this.onUnlockProximity,
-    required this.onUnlockQr,
     required this.onCancel,
   });
 
@@ -1210,7 +1208,6 @@ class _BookingPanel extends StatefulWidget {
   final bool unlocking;
 
   final VoidCallback onUnlockProximity;
-  final VoidCallback onUnlockQr;
   final VoidCallback onCancel;
 
   @override
@@ -1339,7 +1336,7 @@ class _BookingPanelState extends State<_BookingPanel> {
               if (!expired && !widget.canUnlockByProximity) ...[
                 const SizedBox(height: 6),
                 Text(
-                  'Avvicinati al mezzo (entro 50 m) per sbloccarlo, oppure scansiona il QR.',
+                  'Avvicinati al mezzo (entro 50 m) per sbloccarlo.',
                   style: GoogleFonts.barlow(
                     fontSize: 12.5,
                     height: 1.3,
@@ -1347,34 +1344,6 @@ class _BookingPanelState extends State<_BookingPanel> {
                   ),
                 ),
               ],
-              const SizedBox(height: 8),
-              // UT.13 — Sblocco via QR del mezzo fisico (sempre disponibile).
-              SizedBox(
-                height: 46,
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed:
-                      (expired || widget.unlocking) ? null : widget.onUnlockQr,
-                  icon: const Icon(Icons.qr_code_scanner, size: 19, color: _kAccent),
-                  label: Text(
-                    'SCANSIONA QR',
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                      color: _kAccent,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _kAccent,
-                    side: const BorderSide(color: _kAccent),
-                    disabledForegroundColor: _kDim,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                ),
-              ),
               const SizedBox(height: 8),
               SizedBox(
                 height: 44,
