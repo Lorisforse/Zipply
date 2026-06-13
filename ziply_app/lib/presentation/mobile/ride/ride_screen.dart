@@ -14,6 +14,7 @@ import 'package:ziply_app/data/models/ride_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
+import 'package:ziply_app/presentation/mobile/ride/ride_summary_screen.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 import 'package:ziply_app/services/ride_service.dart';
 
@@ -184,17 +185,29 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
   String _euro(double value) => '€ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
 
   /// Termina il noleggio: chiude la corsa lato backend (così il mezzo torna
-  /// disponibile) e torna alla mappa. In caso di errore resta sulla schermata
-  /// mostrando il messaggio.
+  /// disponibile) e mostra il riepilogo di fine corsa (UT.04) con durata e
+  /// costo congelati al momento del termine. In caso di errore resta sulla
+  /// schermata mostrando il messaggio.
   Future<void> _onEndRide() async {
     if (_ending) return;
+    // Congela durata e costo come mostrati nel banner al momento del termine:
+    // l'endpoint /end restituisce solo lo stato, quindi il riepilogo riusa i
+    // valori già calcolati qui.
+    final duration = Duration(seconds: _elapsedSeconds);
+    final cost = _cost;
     setState(() => _ending = true);
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     try {
       await _rideService.endRide(widget.ride.id);
       if (!mounted) return;
-      navigator.pop();
+      await RideSummaryScreen.show(
+        navigator.context,
+        ride: widget.ride,
+        vehicle: widget.vehicle,
+        duration: duration,
+        cost: cost,
+      );
     } on SessionExpiredException catch (e) {
       if (!mounted) return;
       setState(() => _ending = false);
