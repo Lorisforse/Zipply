@@ -6,6 +6,8 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Ziply usa la tua posizione per mostrarti i mezzi disponibili nelle vicinanze.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Ziply usa la fotocamera per scansionare il QR del mezzo e sbloccarlo.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

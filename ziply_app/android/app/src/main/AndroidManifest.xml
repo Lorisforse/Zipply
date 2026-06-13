@@ -3,6 +3,8 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Richiesto da UT.13: scansione del QR del mezzo (mobile_scanner). -->
+    <uses-permission android:name="android.permission.CAMERA"/>
     <application
         android:label="Ziply"
         android:name="${applicationName}"

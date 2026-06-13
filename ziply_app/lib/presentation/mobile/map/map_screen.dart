@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
 import 'package:ziply_app/data/models/forbidden_zone_model.dart';
+import 'package:ziply_app/data/models/ride_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
 import 'package:ziply_app/presentation/mobile/booking/screens/booking_cancelled_screen.dart';
@@ -16,10 +17,13 @@ import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_bottom_sheet.d
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/presentation/mobile/menu/menu_drawer.dart';
+import 'package:ziply_app/presentation/mobile/ride/qr_scan_screen.dart';
+import 'package:ziply_app/presentation/mobile/ride/ride_screen.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 import 'package:ziply_app/services/auth_service.dart';
 import 'package:ziply_app/services/booking_service.dart';
 import 'package:ziply_app/services/forbidden_zone_service.dart';
+import 'package:ziply_app/services/ride_service.dart';
 import 'package:ziply_app/services/routing_service.dart';
 import 'package:ziply_app/services/vehicle_service.dart';
 
@@ -40,6 +44,10 @@ const double _kZoom = 15;
 // corrente) vengono aggregati in un unico marker con il conteggio.
 const double _kClusterRadiusPx = 70;
 
+// UT.13 — Sblocco per prossimità: abilitato solo se l'utente è entro questa
+// distanza (metri) dal mezzo prenotato.
+const double _kUnlockRadiusMeters = 50;
+
 enum _ViewState { loading, error, success }
 
 /// Filtro per tipo di mezzo mostrato sulla mappa e nella lista vicini.
@@ -59,6 +67,7 @@ class _MapScreenState extends State<MapScreen> {
   final AuthService _authService = AuthService();
   final RoutingService _routingService = RoutingService();
   final BookingService _bookingService = BookingService();
+  final RideService _rideService = RideService();
   final ForbiddenZoneService _forbiddenZoneService = ForbiddenZoneService();
   final MapController _mapController = MapController();
   // Chiave dello Scaffold per aprire il menu (endDrawer) dall'header.
@@ -84,6 +93,8 @@ class _MapScreenState extends State<MapScreen> {
   VehicleModel? _bookedVehicle;
   List<LatLng> _walkingRoute = const [];
   bool _cancelling = false;
+  // UT.13 — guardia anti doppio-sblocco mentre la chiamata è in corso.
+  bool _unlocking = false;
 
   // Filtro mezzi attivo (browse mode).
   _VehicleFilter _filter = _VehicleFilter.all;
@@ -409,6 +420,84 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  /// UT.13 — Lo sblocco per prossimità è abilitato solo se conosciamo la
+  /// posizione utente ed è entro [_kUnlockRadiusMeters] dal mezzo prenotato.
+  bool _canUnlockByProximity() {
+    final user = _userPosition;
+    final vehicle = _bookedVehicle;
+    if (user == null || vehicle == null) return false;
+    final meters = Geolocator.distanceBetween(
+      user.latitude,
+      user.longitude,
+      vehicle.latitude,
+      vehicle.longitude,
+    );
+    return meters <= _kUnlockRadiusMeters;
+  }
+
+  /// UT.13 — Sblocco per prossimità: chiama POST /rides/unlock con il
+  /// vehicle_id del mezzo prenotato.
+  Future<void> _onUnlockProximity() async {
+    final vehicle = _bookedVehicle;
+    if (vehicle == null || _unlocking) return;
+    await _performUnlock(() => _rideService.unlockByProximity(vehicle.id), vehicle);
+  }
+
+  /// UT.13 — Sblocco via QR: apre lo scanner, poi chiama POST /rides/unlock con
+  /// il qr_code letto dal mezzo fisico.
+  Future<void> _onUnlockQr() async {
+    final vehicle = _bookedVehicle;
+    if (vehicle == null || _unlocking) return;
+    final code = await QrScanScreen.show(context);
+    if (code == null || !mounted) return;
+    await _performUnlock(() => _rideService.unlockByQr(code), vehicle);
+  }
+
+  /// Esegue lo sblocco ([unlock]) mostrando il loading, e — se va a buon fine —
+  /// libera lo stato della prenotazione (ormai consumata) e apre la schermata
+  /// di noleggio attivo. Al ritorno ricarica i mezzi (quello in uso non è più
+  /// disponibile). Gestisce 401 e gli altri errori con messaggi chiari.
+  Future<void> _performUnlock(
+    Future<RideModel> Function() unlock,
+    VehicleModel vehicle,
+  ) async {
+    setState(() => _unlocking = true);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final ride = await unlock();
+      if (!mounted) return;
+      setState(() {
+        _activeBooking = null;
+        _bookedVehicle = null;
+        _walkingRoute = const [];
+        _unlocking = false;
+      });
+      await navigator.push(
+        MaterialPageRoute(
+          builder: (_) => RideScreen(ride: ride, vehicle: vehicle),
+        ),
+      );
+      if (!mounted) return;
+      _load();
+    } on SessionExpiredException {
+      if (mounted) setState(() => _unlocking = false);
+      await _handleSessionExpired();
+    } on Exception catch (e) {
+      if (!mounted) return;
+      setState(() => _unlocking = false);
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: _kSurface,
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+            style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+          ),
+        ),
+      );
+    }
+  }
+
   /// Token assente/scaduto (401): pulisce il token, avvisa e torna al login.
   Future<void> _handleSessionExpired() async {
     await _authService.logout();
@@ -553,6 +642,10 @@ class _MapScreenState extends State<MapScreen> {
             child: _BookingPanel(
               booking: _activeBooking!,
               vehicle: _bookedVehicle!,
+              canUnlockByProximity: _canUnlockByProximity(),
+              unlocking: _unlocking,
+              onUnlockProximity: _onUnlockProximity,
+              onUnlockQr: _onUnlockQr,
               onCancel: _onCancelBooking,
             ),
           ),
@@ -995,11 +1088,25 @@ class _BookingPanel extends StatefulWidget {
   const _BookingPanel({
     required this.booking,
     required this.vehicle,
+    required this.canUnlockByProximity,
+    required this.unlocking,
+    required this.onUnlockProximity,
+    required this.onUnlockQr,
     required this.onCancel,
   });
 
   final BookingModel booking;
   final VehicleModel vehicle;
+
+  /// True quando l'utente è abbastanza vicino al mezzo per sbloccarlo per
+  /// prossimità (≤ 50 m); ricalcolato dal parent a ogni aggiornamento GPS.
+  final bool canUnlockByProximity;
+
+  /// True mentre una chiamata di sblocco è in corso (loading sui pulsanti).
+  final bool unlocking;
+
+  final VoidCallback onUnlockProximity;
+  final VoidCallback onUnlockQr;
   final VoidCallback onCancel;
 
   @override
@@ -1117,31 +1224,51 @@ class _BookingPanelState extends State<_BookingPanel> {
                 ],
               ),
               const SizedBox(height: 14),
-              // Sblocca mezzo: disabilitato per ora (logica → UT.13).
-              Container(
-                height: 50,
-                width: double.infinity,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: _kSurface,
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: _kBorder),
+              // UT.13 — Sblocco per prossimità: abilitato solo entro 50 m dal
+              // mezzo e finché la prenotazione non è scaduta.
+              _UnlockButton(
+                enabled: widget.canUnlockByProximity && !expired,
+                loading: widget.unlocking,
+                onTap: widget.onUnlockProximity,
+              ),
+              // Suggerimento quando si è ancora troppo lontani.
+              if (!expired && !widget.canUnlockByProximity) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Avvicinati al mezzo (entro 50 m) per sbloccarlo, oppure scansiona il QR.',
+                  style: GoogleFonts.barlow(
+                    fontSize: 12.5,
+                    height: 1.3,
+                    color: _kDim,
+                  ),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.lock_outline, color: _kDim, size: 19),
-                    const SizedBox(width: 9),
-                    Text(
-                      'SBLOCCA MEZZO',
-                      style: GoogleFonts.barlowCondensed(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
-                        color: _kDim,
-                      ),
+              ],
+              const SizedBox(height: 8),
+              // UT.13 — Sblocco via QR del mezzo fisico (sempre disponibile).
+              SizedBox(
+                height: 46,
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed:
+                      (expired || widget.unlocking) ? null : widget.onUnlockQr,
+                  icon: const Icon(Icons.qr_code_scanner, size: 19, color: _kAccent),
+                  label: Text(
+                    'SCANSIONA QR',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1,
+                      color: _kAccent,
                     ),
-                  ],
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _kAccent,
+                    side: const BorderSide(color: _kAccent),
+                    disabledForegroundColor: _kDim,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
@@ -1149,7 +1276,7 @@ class _BookingPanelState extends State<_BookingPanel> {
                 height: 44,
                 width: double.infinity,
                 child: OutlinedButton(
-                  onPressed: widget.onCancel,
+                  onPressed: widget.unlocking ? null : widget.onCancel,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: _kDim,
                     side: const BorderSide(color: _kBorder),
@@ -1171,6 +1298,69 @@ class _BookingPanelState extends State<_BookingPanel> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Pulsante "sblocca mezzo" (prossimità, UT.13) ───────────────────────────
+class _UnlockButton extends StatelessWidget {
+  const _UnlockButton({
+    required this.enabled,
+    required this.loading,
+    required this.onTap,
+  });
+
+  /// Abilitato (accent) solo quando l'utente è abbastanza vicino; altrimenti
+  /// resta "spento" (surface + testo dim) come invito ad avvicinarsi.
+  final bool enabled;
+  final bool loading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 50,
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: (enabled && !loading) ? onTap : null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: _kAccent,
+          foregroundColor: _kBg,
+          disabledBackgroundColor: _kSurface,
+          disabledForegroundColor: _kDim,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(4),
+            side: enabled ? BorderSide.none : const BorderSide(color: _kBorder),
+          ),
+        ),
+        child: loading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.5, color: _kBg),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.lock_open_rounded,
+                    color: enabled ? _kBg : _kDim,
+                    size: 19,
+                  ),
+                  const SizedBox(width: 9),
+                  Text(
+                    'SBLOCCA MEZZO',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                      color: enabled ? _kBg : _kDim,
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }
