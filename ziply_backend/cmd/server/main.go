@@ -45,6 +45,7 @@ func main() {
 	// Authenticated routes (JWT Bearer).
 	mux.Handle("GET /vehicles", middleware.JWTAuth(http.HandlerFunc(vehicleHandler.List)))
 	mux.Handle("POST /bookings", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Create)))
+	mux.Handle("POST /bookings/{id}/cancel", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Cancel)))
 
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {

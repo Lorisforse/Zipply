@@ -118,3 +118,44 @@ func (r *BookingRepository) Expire(ctx context.Context, bookingID, vehicleID str
 	}
 	return tx.Commit(ctx)
 }
+
+// Cancel marks the user's active booking as 'annullata' and frees its vehicle,
+// in a single transaction. Returns domain.ErrBookingNotCancellable when no
+// active booking with the given id belongs to the user.
+func (r *BookingRepository) Cancel(ctx context.Context, bookingID, userID string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Lock the booking and ensure it is the user's and still active.
+	var vehicleID string
+	err = tx.QueryRow(ctx,
+		`SELECT vehicle_id FROM bookings
+		 WHERE id = $1 AND user_id = $2 AND status = 'attiva' FOR UPDATE`,
+		bookingID, userID,
+	).Scan(&vehicleID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.ErrBookingNotCancellable
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE bookings SET status = 'annullata' WHERE id = $1`,
+		bookingID,
+	); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE vehicles SET status = 'disponibile', updated_at = NOW() WHERE id = $1`,
+		vehicleID,
+	); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}

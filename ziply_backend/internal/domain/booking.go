@@ -21,6 +21,7 @@ const BookingHoldDuration = 15 * time.Minute
 
 // Domain errors returned by the booking flow.
 var (
-	ErrVehicleNotAvailable = errors.New("mezzo non disponibile")
-	ErrActiveBookingExists = errors.New("hai già una prenotazione attiva")
+	ErrVehicleNotAvailable   = errors.New("mezzo non disponibile")
+	ErrActiveBookingExists   = errors.New("hai già una prenotazione attiva")
+	ErrBookingNotCancellable = errors.New("prenotazione non annullabile")
 )

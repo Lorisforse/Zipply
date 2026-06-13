@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
+import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 import 'package:ziply_app/services/booking_service.dart';
 
 // ── Palette (da Grafica/mappa-handoff) ─────────────────────────────────────
@@ -261,20 +263,28 @@ class _GlyphTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
         border: Border.all(color: _kBorder, width: 0.5),
       ),
-      child: Icon(_iconFor(kind), color: _kAccent, size: 21),
+      child: _glyph(kind),
     );
   }
 
-  IconData _iconFor(VehicleType kind) {
+  /// Glifo coerente con il marker sulla mappa (vehicle_marker.dart), tinto di
+  /// accent: per il monopattino riusa lo stesso SVG del pin (non
+  /// Icons.electric_scooter, che ha il fulmine e differisce dalla mappa).
+  Widget _glyph(VehicleType kind) {
     switch (kind) {
       case VehicleType.bike:
-        return Icons.pedal_bike;
-      case VehicleType.scooter:
-        return Icons.electric_scooter;
+        return const Icon(Icons.pedal_bike, color: _kAccent, size: 21);
       case VehicleType.car:
-        return Icons.directions_car;
+        return const Icon(Icons.directions_car, color: _kAccent, size: 21);
+      case VehicleType.scooter:
+        return SvgPicture.string(
+          kScooterGlyphSvg,
+          width: 22,
+          height: 22,
+          colorFilter: const ColorFilter.mode(_kAccent, BlendMode.srcIn),
+        );
       case VehicleType.unknown:
-        return Icons.location_on;
+        return const Icon(Icons.location_on, color: _kAccent, size: 21);
     }
   }
 }

@@ -75,3 +75,32 @@ func (h *BookingHandler) Create(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
+
+// Cancel handles POST /bookings/{id}/cancel, annullando la prenotazione attiva
+// dell'utente autenticato e liberando il mezzo.
+func (h *BookingHandler) Cancel(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.CtxUserID).(string)
+	if !ok || userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token non valido"})
+		return
+	}
+
+	bookingID := r.PathValue("id")
+	if bookingID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Dati non validi"})
+		return
+	}
+
+	if err := h.bookings.Cancel(r.Context(), userID, bookingID); err != nil {
+		switch {
+		case errors.Is(err, domain.ErrBookingNotCancellable):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "prenotazione non trovata o già conclusa"})
+		default:
+			log.Printf("[BOOKINGS] cancel failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "annullata"})
+}

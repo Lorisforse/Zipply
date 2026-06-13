@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
+import 'package:ziply_app/services/api_exceptions.dart';
 
 /// Servizio per il recupero dei mezzi: chiamate REST verso ziply_backend.
 /// Allinea le convenzioni di [AuthService]: package http, token JWT da
@@ -60,16 +61,10 @@ class VehicleService {
           .map((e) => VehicleModel.fromJson(e as Map<String, dynamic>))
           .toList();
     }
-    throw Exception(_errorMessageFor(response.statusCode));
-  }
-
-  /// Mappa uno status code di errore del backend in un messaggio per la UI.
-  String _errorMessageFor(int statusCode) {
-    switch (statusCode) {
-      case 401:
-        return 'Sessione scaduta, effettua di nuovo l\'accesso';
-      default:
-        return 'Impossibile caricare i mezzi disponibili';
+    // 401: token assente/scaduto/non valido → l'utente deve riautenticarsi.
+    if (response.statusCode == 401) {
+      throw const SessionExpiredException();
     }
+    throw Exception('Impossibile caricare i mezzi disponibili');
   }
 }

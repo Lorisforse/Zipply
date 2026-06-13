@@ -15,6 +15,7 @@ const expiryJobTimeout = 10 * time.Second
 type BookingRepository interface {
 	Create(ctx context.Context, userID, vehicleID string, expiresAt time.Time) (*domain.Booking, error)
 	Expire(ctx context.Context, bookingID, vehicleID string) error
+	Cancel(ctx context.Context, bookingID, userID string) error
 }
 
 // BookingUsecase implements the vehicle reservation flow.
@@ -39,6 +40,13 @@ func (uc *BookingUsecase) Create(ctx context.Context, userID, vehicleID string) 
 
 	uc.scheduleExpiry(booking)
 	return booking, nil
+}
+
+// Cancel annulla la prenotazione attiva dell'utente e libera il mezzo. Il job
+// di scadenza eventualmente già programmato diventa un no-op (Expire agisce
+// solo su prenotazioni ancora 'attiva').
+func (uc *BookingUsecase) Cancel(ctx context.Context, userID, bookingID string) error {
+	return uc.bookings.Cancel(ctx, bookingID, userID)
 }
 
 // scheduleExpiry fires once the hold elapses and, if the booking is still

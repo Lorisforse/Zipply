@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
+import 'package:ziply_app/services/api_exceptions.dart';
 
 /// Servizio per la prenotazione dei mezzi: chiamate REST verso ziply_backend.
 /// Allinea le convenzioni di [VehicleService] e [AuthService]: package http,
@@ -55,6 +56,39 @@ class BookingService {
     }
 
     throw Exception(_errorMessageFor(response.statusCode, body));
+  }
+
+  /// Annulla la prenotazione [bookingId] (POST /bookings/{id}/cancel).
+  /// Non restituisce nulla in caso di successo; lancia [SessionExpiredException]
+  /// sul 401, altrimenti una Exception con messaggio pronto per la UI.
+  Future<void> cancelBooking(String bookingId) async {
+    final token = await _storage.read(key: kTokenKey);
+
+    final http.Response response;
+    try {
+      response = await _client.post(
+        Uri.parse('$kBaseUrl/bookings/$bookingId/cancel'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(_timeout);
+    } on http.ClientException {
+      throw Exception('Impossibile connettersi al server');
+    } on TimeoutException {
+      throw Exception('Impossibile connettersi al server');
+    }
+
+    if (response.statusCode == 200) return;
+    if (response.statusCode == 401) throw const SessionExpiredException();
+
+    final body = _decodeBody(response.bodyBytes);
+    final serverMessage = body?['error'];
+    throw Exception(
+      serverMessage is String && serverMessage.isNotEmpty
+          ? serverMessage
+          : 'Impossibile annullare la prenotazione',
+    );
   }
 
   /// Decodifica il body JSON in modo difensivo, restituendo null se assente o
