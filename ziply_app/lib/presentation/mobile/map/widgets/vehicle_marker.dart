@@ -239,9 +239,9 @@ class _BatteryRingPainter extends CustomPainter {
     final filled = (clamped / 100 * _segments).round();
     final fullColor = clamped > 70 ? _kBatteryFull : _kBatteryLow;
 
-    final segmentSweep = (2 * pi) / _segments;
-    final gap = _gapDegrees * pi / 180;
-    final arcSweep = segmentSweep - gap;
+    const segmentSweep = (2 * pi) / _segments;
+    const gap = _gapDegrees * pi / 180;
+    const arcSweep = segmentSweep - gap;
 
     final paint = Paint()
       ..style = PaintingStyle.stroke

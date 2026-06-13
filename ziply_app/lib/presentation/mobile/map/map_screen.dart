@@ -9,8 +9,11 @@ import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
+import 'package:ziply_app/presentation/mobile/booking/screens/booking_cancelled_screen.dart';
+import 'package:ziply_app/presentation/mobile/map/widgets/nearby_vehicles_sheet.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_bottom_sheet.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
+import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 import 'package:ziply_app/services/auth_service.dart';
 import 'package:ziply_app/services/booking_service.dart';
@@ -35,6 +38,9 @@ const double _kZoom = 15;
 const double _kClusterRadiusPx = 70;
 
 enum _ViewState { loading, error, success }
+
+/// Filtro per tipo di mezzo mostrato sulla mappa e nella lista vicini.
+enum _VehicleFilter { all, bike, scooter, car }
 
 /// [MOBILE] UC-02 — Visualizza mappa con mezzi.
 /// Schermata principale post-login: mappa OpenStreetMap con i mezzi disponibili.
@@ -64,6 +70,29 @@ class _MapScreenState extends State<MapScreen> {
   VehicleModel? _bookedVehicle;
   List<LatLng> _walkingRoute = const [];
   bool _cancelling = false;
+
+  // Filtro mezzi attivo (browse mode).
+  _VehicleFilter _filter = _VehicleFilter.all;
+
+  /// Mezzi visibili in base al filtro corrente.
+  List<VehicleModel> get _visibleVehicles {
+    switch (_filter) {
+      case _VehicleFilter.all:
+        return _vehicles;
+      case _VehicleFilter.bike:
+        return _vehicles
+            .where((v) => v.kind == VehicleType.bike)
+            .toList(growable: false);
+      case _VehicleFilter.scooter:
+        return _vehicles
+            .where((v) => v.kind == VehicleType.scooter)
+            .toList(growable: false);
+      case _VehicleFilter.car:
+        return _vehicles
+            .where((v) => v.kind == VehicleType.car)
+            .toList(growable: false);
+    }
+  }
 
   @override
   void initState() {
@@ -132,6 +161,35 @@ class _MapScreenState extends State<MapScreen> {
     _mapController.move(_center, _kZoom);
   }
 
+  /// Apre la lista "mezzi vicini" (solo via pulsante). Al tap su una riga apre
+  /// la scheda del mezzo selezionato.
+  Future<void> _showNearbyVehicles() async {
+    final selected = await NearbyVehiclesSheet.show(
+      context,
+      vehicles: _sortedVisibleVehicles(),
+      userPosition: _userPosition,
+      radiusKm: _kRadiusKm,
+    );
+    if (selected == null || !mounted) return;
+    _onVehicleTap(selected);
+  }
+
+  /// Mezzi visibili ordinati per distanza dall'utente (se nota).
+  List<VehicleModel> _sortedVisibleVehicles() {
+    final list = [..._visibleVehicles];
+    final from = _userPosition;
+    if (from != null) {
+      list.sort((a, b) {
+        final da = Geolocator.distanceBetween(
+            from.latitude, from.longitude, a.latitude, a.longitude);
+        final db = Geolocator.distanceBetween(
+            from.latitude, from.longitude, b.latitude, b.longitude);
+        return da.compareTo(db);
+      });
+    }
+    return list;
+  }
+
   /// UT.05 + UT.02 — Apre la scheda mezzo; al ritorno, se la prenotazione va a
   /// buon fine, resta sulla mappa in modalità "raggiungi il mezzo" (mezzo
   /// evidenziato, altri spenti, percorso a piedi, pannello in basso).
@@ -179,14 +237,20 @@ class _MapScreenState extends State<MapScreen> {
     setState(() => _walkingRoute = route);
   }
 
-  /// Annulla la prenotazione attiva: chiama il backend, poi libera la mappa
-  /// (il mezzo torna disponibile fra i marker normali) e avvisa l'utente.
+  /// Annulla la prenotazione: prima chiede conferma, poi chiama il backend e,
+  /// se va a buon fine, libera la mappa e mostra la schermata "annullata".
   Future<void> _onCancelBooking() async {
     final booking = _activeBooking;
-    if (booking == null || _cancelling) return;
-    _cancelling = true;
+    final vehicle = _bookedVehicle;
+    if (booking == null || vehicle == null || _cancelling) return;
 
+    final confirmed = await _confirmCancel();
+    if (confirmed != true || !mounted) return;
+
+    _cancelling = true;
+    final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
+    final userPos = _userPosition;
     try {
       await _bookingService.cancelBooking(booking.id);
       if (!mounted) return;
@@ -195,12 +259,12 @@ class _MapScreenState extends State<MapScreen> {
         _bookedVehicle = null;
         _walkingRoute = const [];
       });
-      messenger.showSnackBar(
-        SnackBar(
-          backgroundColor: _kSurface,
-          content: Text(
-            'Prenotazione annullata',
-            style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+      await navigator.push(
+        MaterialPageRoute(
+          builder: (_) => BookingCancelledScreen(
+            booking: booking,
+            vehicle: vehicle,
+            userPosition: userPos,
           ),
         ),
       );
@@ -220,6 +284,55 @@ class _MapScreenState extends State<MapScreen> {
     } finally {
       _cancelling = false;
     }
+  }
+
+  /// Dialog di conferma prima di annullare la prenotazione.
+  Future<bool?> _confirmCancel() {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _kSurface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        title: Text(
+          'Annullare la prenotazione?',
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: _kText,
+          ),
+        ),
+        content: Text(
+          'Sei sicuro di voler annullare la prenotazione? Il mezzo tornerà disponibile a tutti.',
+          style: GoogleFonts.barlow(fontSize: 14, height: 1.4, color: _kDim),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'NO',
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                color: _kDim,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+              'SÌ, ANNULLA',
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                color: _kAccent,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Token assente/scaduto (401): pulisce il token, avvisa e torna al login.
@@ -249,6 +362,12 @@ class _MapScreenState extends State<MapScreen> {
         child: Column(
           children: [
             const _Header(),
+            // Filtri tipo mezzo: solo in browse mode (no prenotazione attiva).
+            if (_state == _ViewState.success && _activeBooking == null)
+              _FilterBar(
+                selected: _filter,
+                onChanged: (f) => setState(() => _filter = f),
+              ),
             Expanded(child: _buildBody(context)),
           ],
         ),
@@ -310,6 +429,19 @@ class _MapScreenState extends State<MapScreen> {
           top: 16,
           child: _RecenterButton(onTap: _recenter),
         ),
+        // Pulsante per aprire la lista mezzi vicini (solo in browse mode).
+        if (_activeBooking == null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 24,
+            child: Center(
+              child: _NearbyButton(
+                count: _visibleVehicles.length,
+                onTap: _showNearbyVehicles,
+              ),
+            ),
+          ),
         // Pannello prenotazione attiva: non bloccante, la mappa resta visibile.
         if (_activeBooking != null && _bookedVehicle != null)
           Positioned(
@@ -421,20 +553,21 @@ class _MapScreenState extends State<MapScreen> {
   /// clustering greedy a distanza: ad alto zoom le distanze in pixel crescono e
   /// i cluster si sciolgono in marker individuali.
   List<_Cluster> _clusterize(MapCamera camera) {
-    final points = _vehicles
+    final vehicles = _visibleVehicles;
+    final points = vehicles
         .map((v) => camera.project(LatLng(v.latitude, v.longitude)))
         .toList(growable: false);
-    final used = List<bool>.filled(_vehicles.length, false);
+    final used = List<bool>.filled(vehicles.length, false);
     final clusters = <_Cluster>[];
-    for (var i = 0; i < _vehicles.length; i++) {
+    for (var i = 0; i < vehicles.length; i++) {
       if (used[i]) continue;
       used[i] = true;
-      final members = <VehicleModel>[_vehicles[i]];
-      for (var j = i + 1; j < _vehicles.length; j++) {
+      final members = <VehicleModel>[vehicles[i]];
+      for (var j = i + 1; j < vehicles.length; j++) {
         if (used[j]) continue;
         if (points[i].distanceTo(points[j]) <= _kClusterRadiusPx) {
           used[j] = true;
-          members.add(_vehicles[j]);
+          members.add(vehicles[j]);
         }
       }
       clusters.add(_Cluster(members));
@@ -504,6 +637,128 @@ class _Header extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Barra filtri tipo mezzo (da handoff) ───────────────────────────────────
+class _FilterBar extends StatelessWidget {
+  const _FilterBar({required this.selected, required this.onChanged});
+
+  final _VehicleFilter selected;
+  final ValueChanged<_VehicleFilter> onChanged;
+
+  // (filtro, etichetta, tipo per il glifo — null = "TUTTI").
+  static const List<(_VehicleFilter, String, VehicleType?)> _items = [
+    (_VehicleFilter.all, 'TUTTI', null),
+    (_VehicleFilter.bike, 'BICI', VehicleType.bike),
+    (_VehicleFilter.scooter, 'SCOOTER', VehicleType.scooter),
+    (_VehicleFilter.car, 'AUTO', VehicleType.car),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: _kBg,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(
+        children: [
+          for (final (filter, label, kind) in _items)
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onChanged(filter),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(2, 11, 2, 10),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: filter == selected ? _kAccent : _kBorder,
+                        width: filter == selected ? 2 : 1,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (kind != null) ...[
+                        vehicleGlyph(
+                          kind,
+                          color: filter == selected ? _kAccent : _kDim,
+                          size: 15,
+                        ),
+                        const SizedBox(width: 5),
+                      ],
+                      Flexible(
+                        child: Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.6,
+                            color: filter == selected ? _kText : _kDim,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Pulsante "mezzi vicini" (apre la lista, bottom-center) ──────────────────
+class _NearbyButton extends StatelessWidget {
+  const _NearbyButton({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          decoration: BoxDecoration(
+            color: _kSurface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: _kBorder),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x73000000), // rgba(0,0,0,0.45)
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.format_list_bulleted, color: _kAccent, size: 18),
+              const SizedBox(width: 9),
+              Text(
+                '$count ${count == 1 ? 'MEZZO VICINO' : 'MEZZI VICINI'}',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8,
+                  color: _kText,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1,21 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
-import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
+import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/services/booking_service.dart';
 
 // ── Palette (da Grafica/mappa-handoff) ─────────────────────────────────────
 const Color _kBg      = Color(0xFF1A1A1A);
-const Color _kSurface = Color(0xFF252525);
 const Color _kBorder  = Color(0xFF333333);
 const Color _kText    = Color(0xFFF5F5F5);
 const Color _kDim     = Color(0xFF777777);
 const Color _kAccent  = Color(0xFFF69659);
-const Color _kGreen   = Color(0xFF5DCAA5);
 
 /// Esito del flusso di prenotazione restituito da [VehicleBottomSheet.show]:
 /// [booking] valorizzato in caso di successo, [error] in caso di fallimento.
@@ -100,7 +96,8 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
     final title = vehicle.type.isEmpty ? 'Mezzo' : vehicle.type;
     final rateText =
         '${(vehicle.hourlyRate / 60).toStringAsFixed(2).replaceAll('.', ',')} €';
-    final (distValue, distSecondary) = _distanceLabels();
+    final (distValue, distSecondary) =
+        walkingLabels(widget.userPosition, vehicle.latitude, vehicle.longitude);
 
     return Container(
       decoration: const BoxDecoration(
@@ -137,7 +134,7 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
               // Header: tile-glifo + tipo mezzo + badge batteria.
               Row(
                 children: [
-                  _GlyphTile(kind: vehicle.kind),
+                  VehicleGlyphTile(kind: vehicle.kind),
                   const SizedBox(width: 13),
                   Expanded(
                     child: Text(
@@ -151,7 +148,7 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  _BatteryBadge(pct: vehicle.batteryLevel),
+                  BatteryBadge(pct: vehicle.batteryLevel),
                 ],
               ),
               const SizedBox(height: 18),
@@ -216,116 +213,6 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  /// Calcola distanza (Haversine via geolocator) e stima a piedi.
-  /// Restituisce (valore, secondario). Senza posizione utente → («—», null).
-  (String, String?) _distanceLabels() {
-    final pos = widget.userPosition;
-    if (pos == null) return ('—', null);
-
-    final meters = Geolocator.distanceBetween(
-      pos.latitude,
-      pos.longitude,
-      widget.vehicle.latitude,
-      widget.vehicle.longitude,
-    );
-
-    final String value;
-    if (meters >= 1000) {
-      value = '${(meters / 1000).toStringAsFixed(1).replaceAll('.', ',')} km';
-    } else {
-      value = '${meters.round()} m';
-    }
-
-    // Stima a piedi come da handoff: ~80 m/min, minimo 1 min.
-    final walk = (meters / 80).round();
-    return (value, 'a ${walk < 1 ? 1 : walk} min');
-  }
-}
-
-// ── Tile-glifo del mezzo (da handoff: 42×42, raggio 4, glifo accent) ────────
-class _GlyphTile extends StatelessWidget {
-  const _GlyphTile({required this.kind});
-
-  final VehicleType kind;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 42,
-      height: 42,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: _kSurface,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: _kBorder, width: 0.5),
-      ),
-      child: _glyph(kind),
-    );
-  }
-
-  /// Glifo coerente con il marker sulla mappa (vehicle_marker.dart), tinto di
-  /// accent: per il monopattino riusa lo stesso SVG del pin (non
-  /// Icons.electric_scooter, che ha il fulmine e differisce dalla mappa).
-  Widget _glyph(VehicleType kind) {
-    switch (kind) {
-      case VehicleType.bike:
-        return const Icon(Icons.pedal_bike, color: _kAccent, size: 21);
-      case VehicleType.car:
-        return const Icon(Icons.directions_car, color: _kAccent, size: 21);
-      case VehicleType.scooter:
-        return SvgPicture.string(
-          kScooterGlyphSvg,
-          width: 22,
-          height: 22,
-          colorFilter: const ColorFilter.mode(_kAccent, BlendMode.srcIn),
-        );
-      case VehicleType.unknown:
-        return const Icon(Icons.location_on, color: _kAccent, size: 21);
-    }
-  }
-}
-
-// ── Badge batteria (da handoff: verde se >70%, altrimenti accent) ──────────
-class _BatteryBadge extends StatelessWidget {
-  const _BatteryBadge({required this.pct});
-
-  final int pct;
-
-  @override
-  Widget build(BuildContext context) {
-    final ok = pct > 70;
-    final color = ok ? _kGreen : _kAccent;
-    final bg = ok
-        ? const Color(0x1A5DCAA5) // rgba(93,202,165,0.10)
-        : const Color(0x1FD4580A); // rgba(212,88,10,0.12)
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(5, 2, 6, 2),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(2),
-        border: Border.all(color: color, width: 0.5),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.bolt, color: color, size: 12),
-          const SizedBox(width: 3),
-          Text(
-            '$pct%',
-            style: GoogleFonts.barlowCondensed(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.3,
-              height: 1,
-              color: color,
-            ),
-          ),
-        ],
       ),
     );
   }
