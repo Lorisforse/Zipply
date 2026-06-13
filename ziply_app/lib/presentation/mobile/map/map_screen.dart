@@ -15,7 +15,7 @@ import 'package:ziply_app/presentation/mobile/map/widgets/nearby_vehicles_sheet.
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_bottom_sheet.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
-import 'package:ziply_app/presentation/mobile/payment/payment_methods_screen.dart';
+import 'package:ziply_app/presentation/mobile/menu/menu_drawer.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 import 'package:ziply_app/services/auth_service.dart';
 import 'package:ziply_app/services/booking_service.dart';
@@ -61,6 +61,8 @@ class _MapScreenState extends State<MapScreen> {
   final BookingService _bookingService = BookingService();
   final ForbiddenZoneService _forbiddenZoneService = ForbiddenZoneService();
   final MapController _mapController = MapController();
+  // Chiave dello Scaffold per aprire il menu (endDrawer) dall'header.
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   _ViewState _state = _ViewState.loading;
   String? _errorMessage;
@@ -429,11 +431,13 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: _kBg,
+      endDrawer: const MenuDrawer(),
       body: SafeArea(
         child: Column(
           children: [
-            const _Header(),
+            _Header(onMenu: () => _scaffoldKey.currentState?.openEndDrawer()),
             // Filtri tipo mezzo: solo in browse mode (no prenotazione attiva).
             if (_state == _ViewState.success && _activeBooking == null)
               _FilterBar(
@@ -703,17 +707,18 @@ class _Cluster {
 
 // ── Header brand (ZIPLY · Zootropolis) ─────────────────────────────────────
 class _Header extends StatelessWidget {
-  const _Header();
+  const _Header({required this.onMenu});
+
+  final VoidCallback onMenu;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       color: _kBg,
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
+      padding: const EdgeInsets.fromLTRB(18, 8, 8, 12),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             'ZIPLY',
@@ -735,15 +740,14 @@ class _Header extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          // UT.14 — accesso ai metodi di pagamento.
+          // Apre il menu (endDrawer) con profilo, metodi di pagamento, ecc.
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const PaymentMethodsScreen()),
-            ),
-            child: const Padding(
-              padding: EdgeInsets.all(4),
-              child: Icon(Icons.credit_card, color: _kAccent, size: 22),
+            onTap: onMenu,
+            child: const SizedBox(
+              width: 40,
+              height: 40,
+              child: Icon(Icons.menu, color: _kText, size: 24),
             ),
           ),
         ],
