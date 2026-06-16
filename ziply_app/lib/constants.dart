@@ -1,6 +1,12 @@
 // Costanti globali dell'applicazione Ziply.
 
-const String kBaseUrl = 'https://api.lorisamato.it/ziply/api';
+// URL base del backend Ziply. Default: backend locale.
+// Sovrascrivibile a build-time senza modificare il sorgente, es.:
+//   flutter run --dart-define=BASE_URL=http://10.0.2.2:8080
+const String kBaseUrl = String.fromEnvironment(
+  'BASE_URL',
+  defaultValue: 'http://localhost:8080',
+);
 const String kTokenKey = 'ziply_auth_token';
 
 // API key Stadia Maps per il basemap scuro della mappa (https://stadiamaps.com).

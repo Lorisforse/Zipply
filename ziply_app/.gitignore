@@ -18,10 +18,9 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# Configurazioni VS Code personali (es. launch verso il backend reale):
+# NON le committiamo, così chi clona usa il default locale di kBaseUrl.
+.vscode/
 
 # Flutter/Dart/Pub related
 **/doc/api/
