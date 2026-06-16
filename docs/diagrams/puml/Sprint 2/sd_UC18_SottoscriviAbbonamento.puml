@@ -1,0 +1,32 @@
+@startuml sd_UC18_SottoscriviAbbonamento
+
+title sd UC-18: Sottoscrivi Abbonamento
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Utente -> App : apriAbbonamenti()
+
+App -> Backend : GET /subscriptions
+Backend -> DB : findSubscriptionsByUser(userID)
+DB --> Backend : abbonamenti[]
+Backend --> App : 200 OK\n{ subscriptions[] }
+App --> Utente : mostraAbbonamenti(\n  per tipologia di mezzo)
+
+Utente -> App : sottoscrivi(vehicleType)
+
+App -> Backend : POST /subscriptions\n{ vehicleType }
+
+Backend -> DB : insertSubscription(\n  userID, vehicleTypeID,\n  startDate, endDate, status "active")
+DB --> Backend : subscriptionID
+
+Backend --> App : 201 Created\n{ subscriptionID }
+
+App --> Utente : confermaAbbonamento(\n  "Abbonamento attivo")
+
+@enduml

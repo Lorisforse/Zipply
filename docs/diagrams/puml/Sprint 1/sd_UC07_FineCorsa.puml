@@ -1,0 +1,51 @@
+@startuml sd_UC07_FineCorsa
+
+title sd UC-07: Fine Corsa e Riepilogo Costo
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Utente -> App : terminaCorsa(vehicleID)
+
+App -> App : verificaTokenValido()
+
+alt ~[token_non_valido~]
+    App --> Utente : reindirizzaLogin()
+else ~[token_valido~]
+
+    App -> Backend : POST /rides/{rideID}/end
+
+    Backend -> DB : findRideAttiva(userID, vehicleID)
+    DB --> Backend : risultato
+
+    alt ~[nessuna_corsa_attiva~]
+        Backend --> App : 403 Forbidden\n{ error: "nessuna corsa attiva" }
+        App --> Utente : mostraErrore("Nessuna corsa attiva")
+    else ~[corsa_attiva~]
+
+        ' Il backend si limita a chiudere la corsa e liberare il mezzo:
+        ' non calcola costo/CO2 e non effettua alcun addebito.
+        Backend -> DB : updateRideStato(\n  rideID, "completata",\n  endedAt)
+        DB --> Backend : ok
+
+        Backend -> DB : updateVehicleStato(\n  vehicleID, "disponibile")
+        DB --> Backend : ok
+
+        Backend --> App : 200 OK\n{ stato: "completata" }
+
+        ' Durata, costo e CO2 sono calcolati lato App (la corsa non e
+        ' tracciata via GPS): durata e costo congelati dal timer attivo,
+        ' CO2 stimata dalla durata.
+        App -> App : calcolaRiepilogo(\n  durata, costo, co2)
+
+        App --> Utente : mostraRiepilogoCorsa(\n  durata, costo, co2,\n  metodoPagamento)
+    end
+
+end
+
+@enduml

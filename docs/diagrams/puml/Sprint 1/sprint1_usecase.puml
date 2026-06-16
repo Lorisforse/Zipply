@@ -1,0 +1,36 @@
+@startuml sprint1_usecase
+skinparam actorStyle awesome
+skinparam usecaseBorderColor #333333
+skinparam usecaseBackgroundColor #F8F8F8
+skinparam arrowColor #333333
+skinparam nodesep 20
+skinparam ranksep 50
+
+left to right direction
+
+actor Utente as U
+
+rectangle "Ziply — Sprint 1" {
+    usecase "UC-00 Registrazione" as UC00
+    usecase "UC-01 Login" as UC01
+    usecase "UC-02 Visualizza mappa" as UC02
+    usecase "UC-03 Visualizza scheda mezzo" as UC03
+    usecase "UC-04 Prenota mezzo" as UC04
+    usecase "UC-05 Sblocco via prossimità" as UC05
+    usecase "UC-06 Sblocco via QR code" as UC06
+    usecase "UC-07 Fine corsa e riepilogo" as UC07
+    usecase "UC-08 Aggiungi metodo pagamento" as UC08
+    usecase "UC-09 Visualizza zone vietate" as UC09
+}
+
+U --> UC00
+U --> UC01
+U --> UC02
+U --> UC03
+U --> UC04
+U --> UC05
+U --> UC06
+U --> UC07
+U --> UC08
+U --> UC09
+@enduml

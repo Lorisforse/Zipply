@@ -1,0 +1,47 @@
+@startuml sd_UC15_PausaCorsa
+
+title sd UC-15: Pausa / Ripresa Corsa
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+participant ":IoT Vehicle (Mock)" as IoT
+database ":PostgreSQL" as DB
+
+== Pausa ==
+
+Utente -> App : mettiInPausa()  (corsa attiva)
+
+App -> Backend : POST /rides/{id}/pause
+
+Backend -> DB : findRideAttiva(id, userID)
+DB --> Backend : corsa
+
+Backend -> IoT : mettiInSicurezza(\n  vehicleID, tipoMezzo)
+IoT --> Backend : ok (lucchetto / disabilita / blocca portiere)
+
+Backend -> DB : insertRidePause(rideID, pausedAt)\nupdateRideStato(id, "paused")
+DB --> Backend : ok
+
+Backend --> App : 200 OK\n{ status: "paused" }
+App --> Utente : mostraStatoPausa(\n  primi 3 min gratis,\n  poi tariffa ridotta)
+
+== Ripresa ==
+
+Utente -> App : riprendiCorsa()
+
+App -> Backend : POST /rides/{id}/resume
+
+Backend -> Backend : costoPausa = calcola(\n  durata - 3 min gratis,\n  tariffa ridotta 50%)
+Backend -> DB : updateRidePause(resumedAt)\nupdateRideStato(id, "attiva")
+DB --> Backend : ok
+
+Backend --> App : 200 OK\n{ status: "attiva", costoPausa }
+App --> Utente : mostraCorsaRipresa()
+
+note over Backend, DB : se la pausa supera le 24h, un controllo\nperiodico termina automaticamente la corsa
+
+@enduml

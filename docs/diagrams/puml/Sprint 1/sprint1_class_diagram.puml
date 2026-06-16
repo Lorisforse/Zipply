@@ -1,0 +1,103 @@
+@startuml sprint1_class_diagram
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam nodesep 80
+skinparam ranksep 100
+
+class User {
+    +id: UUID
+    +email: String
+    +passwordHash: String
+    +firstName: String
+    +lastName: String
+    +createdAt: DateTime
+    +isActive: Boolean
+}
+
+class PaymentMethod {
+    +id: UUID
+    +userId: UUID
+    +cardLastFour: String
+    +cardExpiry: String
+    +isDefault: Boolean
+    +createdAt: DateTime
+}
+
+class VehicleType {
+    +id: UUID
+    +name: String
+    +ratePerMinute: Decimal
+    +co2SavedPerKm: Decimal
+}
+
+class Vehicle {
+    +id: UUID
+    +typeId: UUID
+    +qrCode: String
+    +batteryLevel: Integer
+    +latitude: Decimal
+    +longitude: Decimal
+    +status: VehicleStatus
+    +updatedAt: DateTime
+}
+
+enum VehicleStatus {
+    AVAILABLE
+    BOOKED
+    IN_USE
+    MAINTENANCE
+}
+
+class Booking {
+    +id: UUID
+    +userId: UUID
+    +vehicleId: UUID
+    +createdAt: DateTime
+    +expiresAt: DateTime
+    +status: BookingStatus
+}
+
+enum BookingStatus {
+    ACTIVE
+    EXPIRED
+    USED
+    CANCELLED
+}
+
+class Ride {
+    +id: UUID
+    +bookingId: UUID
+    +userId: UUID
+    +vehicleId: UUID
+    +startedAt: DateTime
+    +endedAt: DateTime
+    +durationMinutes: Integer
+    +totalCost: Decimal
+    +co2Saved: Decimal
+    +status: RideStatus
+}
+
+enum RideStatus {
+    ACTIVE
+    COMPLETED
+}
+
+class ForbiddenZone {
+    +id: UUID
+    +name: String
+    +polygon: JSON
+    +isActive: Boolean
+    +createdAt: DateTime
+}
+
+User "1" --> "0..*" PaymentMethod : ha
+User "1" --> "0..*" Booking : effettua
+User "1" --> "0..*" Ride : esegue
+Booking "1" --> "1" Vehicle : riserva
+Booking "1" --> "1" Ride : genera
+Vehicle "1" --> "1" VehicleType : è di tipo
+Vehicle ..> VehicleStatus
+Booking ..> BookingStatus
+Ride ..> RideStatus
+
+@enduml

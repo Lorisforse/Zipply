@@ -1,0 +1,41 @@
+@startuml sd_UC00_Registrazione
+
+title sd UC-00: Registrazione Utente
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Utente -> App : inserisciDatiRegistrazione(\n  email, password,\n  confermaPassword, nome)
+
+App -> App : validaForm(\n  email, password,\n  confermaPassword)
+
+alt ~[form_non_valido~]
+    App --> Utente : mostraErroriValidazione()
+else ~[form_valido~]
+
+    App -> Backend : POST /auth/register\n{ email, password, nome }
+
+    Backend -> DB : findUserByEmail(email)
+    DB --> Backend : risultato
+
+    alt ~[email_gia_registrata~]
+        Backend --> App : 409 Conflict\n{ error: "email già in uso" }
+        App --> Utente : mostraErrore("Email già registrata")
+    else ~[email_disponibile~]
+        Backend -> Backend : hashPassword(password)
+        Backend -> DB : insertUser(\n  email, passwordHash, nome)
+        DB --> Backend : userID
+        Backend -> Backend : generaJWT(userID)
+        Backend --> App : 201 Created\n{ token, user }
+        App -> App : salvaToken(token)
+        App --> Utente : navigaVersoMappa()
+    end
+
+end
+
+@enduml

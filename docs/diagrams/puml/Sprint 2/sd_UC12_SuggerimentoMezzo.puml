@@ -1,0 +1,30 @@
+@startuml sd_UC12_SuggerimentoMezzo
+
+title sd UC-12: Suggerimento Mezzo
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+participant ":OpenRouteService" as ORS
+
+Utente -> App : inserisciDestinazione(destinazione)
+
+App -> Backend : POST /suggest-vehicle\n{ fromLat, fromLng, destLat, destLng }
+
+Backend -> ORS : GET /directions\n{ profili: bici / auto }
+ORS --> Backend : { distanzaKm, tipologieStrade }
+
+Backend -> Backend : valutaEuristica(\n  distanza, tipologieStrade)
+
+alt ~[distanza_elevata_o_superstrada~]
+    Backend --> App : 200 OK\n{ suggerito: "auto" }
+else ~[percorso_breve_con_ciclabili~]
+    Backend --> App : 200 OK\n{ suggerito: "bici / scooter" }
+end
+
+App --> Utente : mostraSuggerimento(\n  prima della conferma prenotazione)
+
+@enduml

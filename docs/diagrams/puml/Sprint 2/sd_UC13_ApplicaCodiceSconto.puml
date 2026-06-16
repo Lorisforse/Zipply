@@ -1,0 +1,37 @@
+@startuml sd_UC13_ApplicaCodiceSconto
+
+title sd UC-13: Applica Codice Sconto
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Utente -> App : inserisciCodiceSconto(codice)\n(schermata conferma prenotazione)
+
+App -> Backend : POST /discount-codes/validate\n{ codice }
+
+Backend -> DB : findDiscountCode(codice)
+DB --> Backend : risultato
+
+alt ~[codice_inesistente~]
+    Backend --> App : 404 Not Found\n{ error: "codice non valido" }
+    App --> Utente : mostraErrore("Codice non valido")
+else ~[codice_trovato~]
+    Backend -> Backend : verificaValidita(\n  validUntil, isActive,\n  usedCount < maxUses)
+    alt ~[codice_scaduto_o_esaurito~]
+        Backend --> App : 410 Gone\n{ error: "codice scaduto" }
+        App --> Utente : mostraErrore("Codice scaduto")
+    else ~[codice_valido~]
+        Backend --> App : 200 OK\n{ percentuale }
+        App -> App : applicaScontoAStima(percentuale)
+        App --> Utente : mostraScontoApplicato(percentuale)
+    end
+end
+
+note over Backend, DB : lo sconto viene riapplicato\nal costo reale a fine corsa (UC-07)
+
+@enduml

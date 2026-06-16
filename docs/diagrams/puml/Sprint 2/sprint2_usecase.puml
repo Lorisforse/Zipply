@@ -1,0 +1,47 @@
+@startuml sprint2_usecase
+skinparam actorStyle awesome
+skinparam usecaseBorderColor #333333
+skinparam usecaseBackgroundColor #F8F8F8
+skinparam arrowColor #333333
+skinparam nodesep 20
+skinparam ranksep 50
+
+left to right direction
+
+actor Utente as U
+actor Operatore as O
+
+rectangle "Ziply — Sprint 2" {
+    usecase "UC-10 Visualizza percorso" as UC10
+    usecase "UC-11 Visualizza stima costo" as UC11
+    usecase "UC-12 Suggerimento mezzo" as UC12
+    usecase "UC-13 Applica codice sconto" as UC13
+    usecase "UC-14 Sconti automatici" as UC14
+    usecase "UC-15 Pausa / ripresa corsa" as UC15
+    usecase "UC-16 Prenotazione multipla" as UC16
+    usecase "UC-17 Segnala malfunzionamento" as UC17
+    usecase "UC-18 Sottoscrivi abbonamento" as UC18
+    usecase "UC-19 Notifica scadenza prenotazione" as UC19
+    usecase "UC-20 Login operatore" as UC20
+    usecase "UC-21 Visualizza mappa flotta" as UC21
+    usecase "UC-22 Prenotazione anticipata" as UC22
+    usecase "UC-23 Dividi costo corsa multipla" as UC23
+    usecase "UC-24 Chat di assistenza" as UC24
+}
+
+U --> UC10
+U --> UC11
+U --> UC12
+U --> UC13
+U --> UC14
+U --> UC15
+U --> UC16
+U --> UC17
+U --> UC18
+U --> UC19
+U --> UC22
+U --> UC23
+U --> UC24
+O --> UC20
+O --> UC21
+@enduml

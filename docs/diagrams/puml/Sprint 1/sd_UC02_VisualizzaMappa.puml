@@ -1,0 +1,41 @@
+@startuml sd_UC02_VisualizzaMappa
+
+title sd UC-02: Visualizza Mappa con Mezzi
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Utente -> App : apriMappa()
+
+App -> App : recuperaPosizioneGPS()
+
+App -> Backend : GET /vehicles\n{ lat, lng, radius }
+
+Backend -> DB : findVehiclesNearby(\n  lat, lng, radius)
+DB --> Backend : listaMezzi[]
+
+Backend -> Backend : filtraDisponibili(listaMezzi)
+
+Backend --> App : 200 OK\n{ vehicles[] }
+
+App -> App : renderizzaMappa(\n  posizioneUtente,\n  vehicles[])
+
+App --> Utente : mostraMappa(\n  pin mezzi disponibili)
+
+alt ~[utente_sposta_o_zooma~]
+    Utente -> App : aggiornaAreaVisibile(\n  nuoviBounds)
+    App -> Backend : GET /vehicles\n{ lat, lng, radius }
+    Backend -> DB : findVehiclesNearby(\n  lat, lng, radius)
+    DB --> Backend : listaMezzi[]
+    Backend -> Backend : filtraDisponibili(listaMezzi)
+    Backend --> App : 200 OK\n{ vehicles[] }
+    App -> App : aggiornaPinMappa(vehicles[])
+    App --> Utente : mostraMappaAggiornata()
+end
+
+@enduml

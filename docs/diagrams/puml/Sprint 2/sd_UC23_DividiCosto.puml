@@ -1,0 +1,47 @@
+@startuml sd_UC23_DividiCosto
+
+title sd UC-23: Dividi Costo Corsa Multipla
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+actor ":Partecipante" as Part
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+participant ":Payment Gateway (Mock)" as Pay
+database ":PostgreSQL" as DB
+
+== Generazione del link ==
+
+Utente -> App : generaLinkPagamento(rideID)\n(al termine di una corsa multipla)
+
+App -> Backend : POST /rides/{id}/payment-link
+
+Backend -> DB : findCorsaMultipla(rideID)
+DB --> Backend : costoTotale, numPartecipanti
+
+Backend -> Backend : quota = costoTotale / numPartecipanti\nvalidUntil = now + 10 min
+
+Backend -> DB : insertPaymentLink(\n  rideID, totalAmount, participants,\n  amountPerHead, validUntil, "active")
+DB --> Backend : linkID
+
+Backend --> App : 201 Created\n{ link, quota, scadenza }
+App --> Utente : mostraLinkCondivisibile
+
+== Pagamento di una quota ==
+
+Part -> Backend : POST /payment-links/{id}/pay\n{ carta / PayPal }
+
+alt ~[link_scaduto~]
+    Backend --> Part : 410 Gone\n{ error: "link scaduto" }
+    note over Utente : l'utente puo' rigenerare un nuovo link
+else ~[link_valido~]
+    Backend -> Pay : addebita(quota)
+    Pay --> Backend : ok
+    Backend -> DB : registraPagamento(linkID)\naccreditaCredito(prenotante, quota)
+    DB --> Backend : ok
+    Backend --> Part : 200 OK\n{ esito pagamento }
+end
+
+@enduml

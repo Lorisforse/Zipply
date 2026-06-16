@@ -1,0 +1,40 @@
+@startuml sd_UC10_VisualizzaPercorso
+
+title sd UC-10: Visualizza Percorso verso Destinazione
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+participant ":OpenRouteService" as ORS
+database ":PostgreSQL" as DB
+
+Utente -> App : inserisciDestinazione(\n  mezzoSelezionato, destinazione)
+
+App -> Backend : POST /routes\n{ vehicleID, destLat, destLng }
+
+Backend -> DB : findVehicleByID(vehicleID)
+DB --> Backend : mezzo(posizione, tipo)
+
+Backend -> DB : findForbiddenZonesAttive()
+DB --> Backend : zoneVietate[]
+
+Backend -> Backend : mappaProfiloMezzo(tipo)\n(cycling-regular / driving-car)
+
+Backend -> ORS : GET /directions\n{ profilo, start, end,\n  avoid_polygons: zoneVietate }
+
+alt ~[ORS_non_disponibile~]
+    ORS --> Backend : errore / timeout
+    Backend --> App : 200 OK\n{ percorso: linea diretta (fallback) }
+else ~[percorso_calcolato~]
+    ORS --> Backend : { geometry, durataMin, distanzaKm }
+    Backend --> App : 200 OK\n{ geometry, durataMin, distanzaKm }
+end
+
+App -> App : disegnaPercorso(geometry)
+
+App --> Utente : mostraPercorso(\n  mezzo -> destinazione)
+
+@enduml

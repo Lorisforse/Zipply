@@ -1,0 +1,35 @@
+@startuml sd_UC14_ScontiAutomatici
+
+title sd UC-14: Applicazione Sconti Automatici
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Utente -> App : confermaPrenotazione(mezzoSelezionato)
+
+App -> Backend : POST /bookings\n{ vehicleID }
+
+Backend -> DB : findPromozioniAttive(now)
+DB --> Backend : promozioni[]
+
+alt ~[promozione_applicabile~]
+    Backend -> Backend : selezionaScontoMigliore(promozioni)
+    Backend -> DB : insertBooking(\n  userID, vehicleID, scadenza, promotionID)
+    DB --> Backend : bookingID
+    Backend --> App : 201 Created\n{ bookingID, scontoAutomatico }
+    App --> Utente : mostraScontoAutomatico(\n  applicato senza codice)
+else ~[nessuna_promozione_attiva~]
+    Backend -> DB : insertBooking(\n  userID, vehicleID, scadenza)
+    DB --> Backend : bookingID
+    Backend --> App : 201 Created\n{ bookingID }
+    App --> Utente : confermaPrenotazione()
+end
+
+note over Backend, DB : lo sconto automatico viene applicato\nal costo reale a fine corsa (UC-07)
+
+@enduml

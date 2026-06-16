@@ -1,0 +1,36 @@
+@startuml sd_UC22_PrenotazioneAnticipata
+
+title sd UC-22: Prenotazione Anticipata
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+participant ":Payment Gateway (Mock)" as Pay
+database ":PostgreSQL" as DB
+
+Utente -> App : prenotaInAnticipo(\n  mezzo, data, ora)
+
+App -> Backend : POST /bookings/scheduled\n{ vehicleID, scheduledStart }
+
+Backend -> DB : findVehicleConTipo(vehicleID)
+DB --> Backend : mezzo(tipo)
+
+alt ~[monopattino_o_oltre_24h~]
+    Backend --> App : 400 Bad Request\n{ error: "prenotazione anticipata non consentita" }
+    App --> Utente : mostraErrore(\n  "Solo bici/auto, max 24h prima")
+else ~[bici_o_auto_entro_24h~]
+    Backend -> Backend : tariffaProgressiva(oreAnticipo)\n+ importoForfettario
+    Backend -> Pay : preautorizza(importoForfettario)
+    Pay --> Backend : ok
+    Backend -> DB : insertBooking(\n  type="scheduled", scheduledStart, ...)
+    DB --> Backend : bookingID
+    Backend --> App : 201 Created\n{ bookingID, scheduledStart }
+    App --> Utente : confermaPrenotazioneAnticipata(\n  bookingID, data/ora)
+end
+
+note over Backend, DB : in caso di mancata presentazione il mezzo torna\ndisponibile e si addebita proporzionalmente alle ore tenute
+
+@enduml

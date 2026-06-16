@@ -1,0 +1,58 @@
+@startuml sd_UC04_PrenotaMezzo
+
+title sd UC-04: Prenota Mezzo
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Utente -> App : prenotaMezzo(vehicleID, tipoPrenotazione)
+
+App -> App : verificaTokenValido()
+
+alt ~[token_non_valido~]
+    App --> Utente : reindirizzaLogin()
+else ~[token_valido~]
+
+    App -> Backend : POST /bookings\n{ vehicleID, tipoPrenotazione }
+
+    Backend -> DB : findVehicleByID(vehicleID)
+    DB --> Backend : risultato
+
+    alt ~[mezzo_non_disponibile~]
+        Backend --> App : 409 Conflict\n{ error: "mezzo non disponibile" }
+        App --> Utente : mostraErrore("Mezzo non più disponibile")
+    else ~[mezzo_disponibile~]
+
+        Backend -> DB : findActiveBookingByUser(userID)
+        DB --> Backend : risultato
+
+        alt ~[prenotazione_attiva_esistente~]
+            Backend --> App : 409 Conflict\n{ error: "prenotazione già attiva" }
+            App --> Utente : mostraErrore("Hai già una prenotazione attiva")
+        else ~[nessuna_prenotazione_attiva~]
+
+            Backend -> Backend : calcolaScadenzaPrenotazione(\n  tipoPrenotazione)
+
+            Backend -> DB : insertBooking(\n  userID, vehicleID,\n  tipoPrenotazione, scadenza)
+            DB --> Backend : bookingID
+
+            Backend -> DB : updateVehicleStato(\n  vehicleID, "prenotato")
+            DB --> Backend : ok
+
+            Backend --> App : 201 Created\n{ bookingID, scadenza }
+
+            App -> App : avviaCountdownScadenza(scadenza)
+
+            App --> Utente : mostraConfermaPrenotazione(\n  bookingID, scadenza)
+        end
+
+    end
+
+end
+
+@enduml

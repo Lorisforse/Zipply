@@ -1,0 +1,46 @@
+@startuml sd_UC01_Login
+
+title sd UC-01: Login Utente
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Utente -> App : inserisciCredenziali(email, password)
+
+App -> App : validaForm(email, password)
+
+alt ~[form_non_valido~]
+    App --> Utente : mostraErroriValidazione()
+else ~[form_valido~]
+
+    App -> Backend : POST /auth/login\n{ email, password }
+
+    Backend -> DB : findUserByEmail(email)
+    DB --> Backend : risultato
+
+    alt ~[utente_non_trovato~]
+        Backend --> App : 401 Unauthorized\n{ error: "credenziali non valide" }
+        App --> Utente : mostraErrore("Credenziali non valide")
+    else ~[utente_trovato~]
+        Backend -> Backend : verificaPassword(\n  password, passwordHash)
+
+        alt ~[password_errata~]
+            Backend --> App : 401 Unauthorized\n{ error: "credenziali non valide" }
+            App --> Utente : mostraErrore("Credenziali non valide")
+        else ~[password_corretta~]
+            Backend -> Backend : generaJWT(userID)
+            Backend --> App : 200 OK\n{ token, user }
+            App -> App : salvaToken(token)
+            App --> Utente : navigaVersoMappa()
+        end
+
+    end
+
+end
+
+@enduml

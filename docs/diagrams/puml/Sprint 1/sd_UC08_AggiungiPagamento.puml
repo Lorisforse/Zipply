@@ -1,0 +1,59 @@
+@startuml sd_UC08_AggiungiPagamento
+
+title sd UC-08: Aggiungi Metodo di Pagamento
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Utente -> App : apriGestionePagamenti()
+
+App -> App : verificaTokenValido()
+
+alt ~[token_non_valido~]
+    App --> Utente : reindirizzaLogin()
+else ~[token_valido~]
+
+    App -> Backend : GET /users/{userID}/payment-methods
+
+    Backend -> DB : findPaymentMethods(userID)
+    DB --> Backend : metodiEsistenti[]
+
+    Backend --> App : 200 OK\n{ paymentMethods[] }
+
+    App --> Utente : mostraMetodiPagamento(\n  metodiEsistenti[])
+
+    Utente -> App : aggiungiMetodoPagamento(\n  tipo)
+
+    alt ~[tipo_carta~]
+        App --> Utente : mostraFormCarta(\n  numero, scadenza, cvv)
+        Utente -> App : inserisciDatiCarta(\n  numero, scadenza, cvv)
+    else ~[tipo_paypal~]
+        App --> Utente : reindirizzaPayPal()
+        Utente -> App : confermaAutorizzazionePayPal(\n  token)
+    else ~[tipo_google_pay~]
+        App --> Utente : avviaGooglePay()
+        Utente -> App : confermaGooglePay(\n  token)
+    else ~[tipo_apple_pay~]
+        App --> Utente : avviaApplePay()
+        Utente -> App : confermaApplePay(\n  token)
+    end
+
+    App -> Backend : POST /users/{userID}/payment-methods\n{ tipo, token }
+
+    Backend -> Backend : tokenizzaMetodoPagamento(\n  tipo, datiGrezzi)
+
+    Backend -> DB : insertPaymentMethod(\n  userID, tipo, token,\n  ultimeCifre)
+    DB --> Backend : paymentMethodID
+
+    Backend --> App : 201 Created\n{ paymentMethodID, tipo,\n  ultimeCifre }
+
+    App --> Utente : mostraConferma(\n  "Metodo di pagamento\naggiunto con successo")
+
+end
+
+@enduml

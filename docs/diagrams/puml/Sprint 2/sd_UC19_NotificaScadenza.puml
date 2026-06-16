@@ -1,0 +1,33 @@
+@startuml sd_UC19_NotificaScadenza
+
+title sd UC-19: Notifica Scadenza Prenotazione
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Notifiche locali" as Notif
+participant ":Backend Go" as Backend
+
+note over App : alla creazione della prenotazione\nl'app conosce expiresAt (createdAt + 15 min)
+
+App -> Notif : pianificaNotificaLocale(\n  expiresAt - 3 min)
+
+... 12 minuti dopo (3 min alla scadenza) ...
+
+Notif --> Utente : notifica locale\n"Prenotazione in scadenza tra 3 min"\n[ Vai al mezzo | Annulla ]
+
+alt ~[utente_annulla~]
+    Utente -> App : annullaPrenotazione()
+    App -> Backend : POST /bookings/{id}/cancel
+    Backend --> App : 200 OK
+    App --> Utente : mostraPrenotazioneAnnullata()
+else ~[utente_procede~]
+    Utente -> App : vaiAlMezzo()
+    App --> Utente : mostraPercorso / sblocco
+else ~[nessuna_azione~]
+    note over App, Backend : alla scadenza (15 min) la prenotazione\ndecade automaticamente e il mezzo torna disponibile
+end
+
+@enduml

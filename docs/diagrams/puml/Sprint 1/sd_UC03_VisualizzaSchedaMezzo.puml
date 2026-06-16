@@ -1,0 +1,36 @@
+@startuml sd_UC03_VisualizzaSchedaMezzo
+
+title sd UC-03: Visualizza Scheda Mezzo
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Utente -> App : selezionaMezzo(vehicleID)
+
+App -> Backend : GET /vehicles/{vehicleID}
+
+Backend -> DB : findVehicleByID(vehicleID)
+DB --> Backend : risultato
+
+alt ~[mezzo_non_trovato~]
+    Backend --> App : 404 Not Found\n{ error: "mezzo non disponibile" }
+    App --> Utente : mostraErrore("Mezzo non disponibile")
+else ~[mezzo_trovato~]
+    Backend -> DB : findVehicleType(typeID)
+    DB --> Backend : dettagliTipo
+
+    Backend -> Backend : calcolaStatoMezzo(\n  batteria, posizione,\n  statoPrenotazione)
+
+    Backend --> App : 200 OK\n{ vehicle, type, status }
+
+    App -> App : costruisciSchedaMezzo(\n  vehicle, type, status)
+
+    App --> Utente : mostraSchedaMezzo(\n  tipo, modello,\n  livelloBatteria,\n  distanzaDaUtente,\n  tariffaPerMinuto,\n  disponibilita)
+end
+
+@enduml

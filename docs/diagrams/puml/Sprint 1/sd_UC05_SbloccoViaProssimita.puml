@@ -1,0 +1,61 @@
+@startuml sd_UC05_SbloccoViaProssimita
+
+title sd UC-05: Sblocco via Prossimità
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Utente -> App : richiediSblocco(vehicleID, metodo="prossimita")
+
+App -> App : verificaTokenValido()
+
+alt ~[token_non_valido~]
+    App --> Utente : reindirizzaLogin()
+else ~[token_valido~]
+
+    App -> App : recuperaPosizioneGPS()
+
+    App -> Backend : POST /vehicles/{vehicleID}/unlock\n{ metodo: "prossimita", lat, lng }
+
+    Backend -> DB : findVehiclePosition(vehicleID)
+    DB --> Backend : posizioneVeicolo
+
+    Backend -> Backend : calcolaDistanza(\n  posizioneUtente,\n  posizioneVeicolo)
+
+    alt ~[distanza_superiore_a_50m~]
+        Backend --> App : 422 Unprocessable\n{ error: "utente troppo lontano" }
+        App --> Utente : mostraErrore("Avvicinati al mezzo\nper sbloccarlo")
+    else ~[distanza_entro_50m~]
+
+        ' Lo sblocco non richiede una prenotazione: avvia la corsa e,
+        ' se non esiste una prenotazione attiva, ne crea una implicita.
+        Backend -> DB : findBookingAttiva(\n  userID, vehicleID)
+        DB --> Backend : risultato
+
+        alt ~[prenotazione_attiva_esistente~]
+            Backend -> DB : updateBookingStato(\n  bookingID, "utilizzata")
+            DB --> Backend : ok
+        else ~[nessuna_prenotazione~]
+            Backend -> DB : creaBookingImplicita(\n  userID, vehicleID, "utilizzata")
+            DB --> Backend : bookingID
+        end
+
+        Backend -> DB : creaRide(\n  bookingID, userID, vehicleID,\n  "attiva", oraInizio)
+        DB --> Backend : rideID
+
+        Backend -> DB : updateVehicleStato(\n  vehicleID, "in_uso")
+        DB --> Backend : ok
+
+        Backend --> App : 201 Created\n{ rideID, oraInizio }
+
+        App --> Utente : mostraConfermaAvvio(\n  oraInizio)
+    end
+
+end
+
+@enduml

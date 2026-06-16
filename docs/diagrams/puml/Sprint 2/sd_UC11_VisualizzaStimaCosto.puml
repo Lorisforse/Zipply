@@ -1,0 +1,30 @@
+@startuml sd_UC11_VisualizzaStimaCosto
+
+title sd UC-11: Visualizza Stima Costo
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+participant ":OpenRouteService" as ORS
+database ":PostgreSQL" as DB
+
+Utente -> App : confermaDestinazione(\n  mezzoSelezionato, destinazione)
+
+App -> Backend : POST /routes\n{ vehicleID, destLat, destLng }
+
+Backend -> DB : findVehicleConTipo(vehicleID)
+DB --> Backend : mezzo + tariffaAlMinuto
+
+Backend -> ORS : GET /directions\n{ profilo, start, end }
+ORS --> Backend : { durataMin }
+
+Backend -> Backend : stimaCosto =\n  durataMin * tariffaAlMinuto
+
+Backend --> App : 200 OK\n{ durataMin, stimaCosto }
+
+App --> Utente : mostraStimaCosto(\n  prima della conferma prenotazione)
+
+@enduml

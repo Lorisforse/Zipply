@@ -1,0 +1,34 @@
+@startuml sd_UC20_LoginOperatore
+
+title sd UC-20: Login Operatore
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Operatore" as Operatore
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Operatore -> Dash : inserisciCredenziali(email, password)
+
+Dash -> Backend : POST /auth/login\n{ email, password }
+
+Backend -> DB : findUserByEmail(email)
+DB --> Backend : utente(passwordHash, ruolo)
+
+alt ~[credenziali_errate~]
+    Backend --> Dash : 401 Unauthorized\n{ error }
+    Dash --> Operatore : mostraErrore(\n  "Credenziali non valide")
+else ~[credenziali_valide~]
+    Backend -> Backend : generaJWT(\n  sub, email, ruolo)
+    Backend --> Dash : 200 OK\n{ token (claim ruolo) }
+    Dash -> Dash : verificaRuolo(\n  ruolo == "operatore")
+    alt ~[ruolo_non_operatore~]
+        Dash --> Operatore : accessoNegato(\n  "Area riservata agli operatori")
+    else ~[ruolo_operatore~]
+        Dash --> Operatore : mostraDashboard()
+    end
+end
+
+@enduml
