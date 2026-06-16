@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"errors"
+	"math"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -121,43 +123,71 @@ func (r *RideRepository) Unlock(ctx context.Context, userID, vehicleID, qrCode s
 	return ride, nil
 }
 
-// End chiude la corsa 'attiva' dell'utente e rimette il mezzo 'disponibile', in
-// un'unica transazione. Ritorna domain.ErrRideNotFound se non esiste una corsa
-// attiva con quell'id appartenente all'utente.
-func (r *RideRepository) End(ctx context.Context, userID, rideID string) error {
+// End chiude la corsa 'attiva' dell'utente, calcola e persiste durata, costo e
+// CO2 risparmiata, e rimette il mezzo 'disponibile', in un'unica transazione.
+// Ritorna domain.ErrRideNotFound se non esiste una corsa attiva con quell'id
+// appartenente all'utente.
+func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domain.RideSummary, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
-	// Blocca la corsa e verifica che sia dell'utente e ancora attiva.
-	var vehicleID string
+	// Blocca la corsa e leggi inizio, tariffa e CO2/km della tipologia,
+	// verificando che sia dell'utente e ancora attiva.
+	var (
+		vehicleID  string
+		startedAt  time.Time
+		ratePerMin float64
+		co2PerKm   float64
+	)
 	err = tx.QueryRow(ctx,
-		`SELECT vehicle_id FROM rides
-		 WHERE id = $1 AND user_id = $2 AND status = 'attiva' FOR UPDATE`,
+		`SELECT r.vehicle_id, r.started_at,
+		        vt.tariffa_al_minuto::float8, vt.co2_risparmiata_per_km::float8
+		   FROM rides r
+		   JOIN vehicles v       ON v.id = r.vehicle_id
+		   JOIN vehicle_types vt ON vt.id = v.type_id
+		  WHERE r.id = $1 AND r.user_id = $2 AND r.status = 'attiva'
+		  FOR UPDATE OF r`,
 		rideID, userID,
-	).Scan(&vehicleID)
+	).Scan(&vehicleID, &startedAt, &ratePerMin, &co2PerKm)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.ErrRideNotFound
+		return nil, domain.ErrRideNotFound
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	endedAt := time.Now()
+	elapsed := endedAt.Sub(startedAt)
+	minutes := domain.ChargedMinutes(elapsed)
+	cost := math.Round(float64(minutes)*ratePerMin*100) / 100
+	co2 := math.Round(domain.EstimateCo2SavedGrams(elapsed, co2PerKm))
+
 	if _, err := tx.Exec(ctx,
-		`UPDATE rides SET status = 'completata', ended_at = NOW() WHERE id = $1`,
-		rideID,
+		`UPDATE rides
+		    SET status = 'completata', ended_at = $2,
+		        duration_minutes = $3, total_cost = $4, co2_saved = $5
+		  WHERE id = $1`,
+		rideID, endedAt, minutes, cost, co2,
 	); err != nil {
-		return err
+		return nil, err
 	}
 
 	if _, err := tx.Exec(ctx,
 		`UPDATE vehicles SET status = 'disponibile', updated_at = NOW() WHERE id = $1`,
 		vehicleID,
 	); err != nil {
-		return err
+		return nil, err
 	}
 
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return &domain.RideSummary{
+		DurationMinutes: minutes,
+		TotalCost:       cost,
+		Co2SavedGrams:   co2,
+	}, nil
 }

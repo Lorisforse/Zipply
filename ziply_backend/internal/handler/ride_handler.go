@@ -109,7 +109,8 @@ func (h *RideHandler) End(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.rides.End(r.Context(), userID, rideID); err != nil {
+	summary, err := h.rides.End(r.Context(), userID, rideID)
+	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrRideNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "corsa non trovata o già conclusa"})
@@ -120,5 +121,10 @@ func (h *RideHandler) End(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "completata"})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":           "completata",
+		"duration_minutes": summary.DurationMinutes,
+		"total_cost":       summary.TotalCost,
+		"co2_saved":        summary.Co2SavedGrams,
+	})
 }

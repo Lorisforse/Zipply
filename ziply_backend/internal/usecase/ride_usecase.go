@@ -10,7 +10,7 @@ import (
 // (unlock + end).
 type RideRepository interface {
 	Unlock(ctx context.Context, userID, vehicleID, qrCode string) (*domain.Ride, error)
-	End(ctx context.Context, userID, rideID string) error
+	End(ctx context.Context, userID, rideID string) (*domain.RideSummary, error)
 }
 
 // RideUsecase implements the vehicle unlock flow (UT.13).
@@ -30,7 +30,7 @@ func (uc *RideUsecase) Unlock(ctx context.Context, userID, vehicleID, qrCode str
 	return uc.rides.Unlock(ctx, userID, vehicleID, qrCode)
 }
 
-// End chiude la corsa attiva dell'utente e libera il mezzo.
-func (uc *RideUsecase) End(ctx context.Context, userID, rideID string) error {
+// End chiude la corsa attiva dell'utente, calcola il costo e libera il mezzo.
+func (uc *RideUsecase) End(ctx context.Context, userID, rideID string) (*domain.RideSummary, error) {
 	return uc.rides.End(ctx, userID, rideID)
 }
