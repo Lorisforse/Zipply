@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS rides (
     total_cost       DECIMAL(8,2),
     co2_saved        DECIMAL(8,2),
     status           VARCHAR(20)  NOT NULL DEFAULT 'attiva',
-    CONSTRAINT status_valido CHECK (status IN ('attiva', 'paused', 'completata'))
+    CONSTRAINT status_valido CHECK (status IN ('attiva', 'completata'))
 );
 
 -- Metodi di pagamento (solo ultime 4 cifre + scadenza)
@@ -142,17 +142,13 @@ CREATE TABLE IF NOT EXISTS payment_methods (
     created_at     TIMESTAMP  DEFAULT NOW()
 );
 
--- Zone (vietate / designate). Il backend legge le zone vietate da qui.
-CREATE TABLE IF NOT EXISTS zones (
-    id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    nome          VARCHAR(100) NOT NULL,
-    polygon       JSONB        NOT NULL,
-    is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
-    tipo          VARCHAR(20)  NOT NULL DEFAULT 'vietata',
-    bonus_credito NUMERIC(6,2),
-    created_at    TIMESTAMP    DEFAULT NOW(),
-    CONSTRAINT tipo_valido CHECK (tipo IN ('vietata', 'designata')),
-    CONSTRAINT bonus_solo_designata CHECK (tipo = 'designata' OR bonus_credito IS NULL)
+-- Zone vietate (lette dal backend per l'overlay sulla mappa).
+CREATE TABLE IF NOT EXISTS forbidden_zones (
+    id         UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    nome       VARCHAR(100) NOT NULL,
+    polygon    JSONB        NOT NULL,
+    is_active  BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP    DEFAULT NOW()
 );
 
 -- ----- DATI DI ESEMPIO -----
@@ -169,10 +165,9 @@ INSERT INTO vehicles (type_id, qr_code, battery_level, latitude, longitude, stat
   ('22222222-2222-2222-2222-222222222222', 'ZP-SCOOTER-002', 65, 45.4665, 9.1845, 'disponibile'),
   ('33333333-3333-3333-3333-333333333333', 'ZP-CAR-001',     88, 45.4642, 9.1870, 'disponibile');
 
-INSERT INTO zones (nome, polygon, tipo) VALUES
+INSERT INTO forbidden_zones (nome, polygon) VALUES
   ('Centro storico (ZTL)',
-   '{"type":"Polygon","coordinates":[[[9.183,45.468],[9.189,45.468],[9.189,45.463],[9.183,45.463],[9.183,45.468]]]}',
-   'vietata');
+   '{"type":"Polygon","coordinates":[[[9.183,45.468],[9.189,45.468],[9.189,45.463],[9.183,45.463],[9.183,45.468]]]}');
 ```
 </details>
 
