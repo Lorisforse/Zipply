@@ -29,12 +29,12 @@ import 'package:ziply_app/services/routing_service.dart';
 import 'package:ziply_app/services/vehicle_service.dart';
 
 // ── Palette (da Grafica/mappa-handoff) ─────────────────────────────────────
-const Color _kBg      = Color(0xFF1A1A1A);
+const Color _kBg = Color(0xFF1A1A1A);
 const Color _kSurface = Color(0xFF252525);
-const Color _kBorder  = Color(0xFF333333);
-const Color _kText    = Color(0xFFF5F5F5);
-const Color _kDim     = Color(0xFF777777);
-const Color _kAccent  = Color(0xFFF69659);
+const Color _kBorder = Color(0xFF333333);
+const Color _kText = Color(0xFFF5F5F5);
+const Color _kDim = Color(0xFF777777);
+const Color _kAccent = Color(0xFFF69659);
 
 // Centro di Zootropolis: fallback quando la posizione non è disponibile.
 const LatLng _kZootropolisCenter = LatLng(45.4654, 9.1859);
@@ -143,11 +143,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  /// Avvia il refresh periodico dei mezzi (idempotente). Il timer resta sempre
-  /// attivo; è [_refreshVehicles] a decidere quando saltare un giro.
+  /// Avvia il refresh periodico dei mezzi (idempotente).
   void _startAutoRefresh() {
     _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(_kRefreshInterval, (_) => _refreshVehicles());
+    _refreshTimer =
+        Timer.periodic(_kRefreshInterval, (_) => _refreshVehicles());
   }
 
   /// Riallinea silenziosamente la lista mezzi, senza toccare camera né stato di
@@ -286,7 +286,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   /// Prima zona attiva che contiene [p], oppure null se [p] è fuori da tutte.
-  ForbiddenZoneModel? _zoneContaining(LatLng p, List<ForbiddenZoneModel> zones) {
+  ForbiddenZoneModel? _zoneContaining(
+      LatLng p, List<ForbiddenZoneModel> zones) {
     for (final zone in zones) {
       if (zone.contains(p)) return zone;
     }
@@ -384,7 +385,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     // Con una prenotazione attiva gli altri marker sono spenti e inerti.
     if (_activeBooking != null) return;
 
-    final result = await VehicleBottomSheet.show(context, vehicle, _userPosition);
+    final result =
+        await VehicleBottomSheet.show(context, vehicle, _userPosition);
     if (result == null || !mounted) return;
     await _handleSheetResult(result, vehicle);
   }
@@ -555,7 +557,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Future<void> _onUnlockProximity() async {
     final vehicle = _bookedVehicle;
     if (vehicle == null || _unlocking) return;
-    await _performUnlock(() => _rideService.unlockByProximity(vehicle.id), vehicle);
+    await _performUnlock(
+        () => _rideService.unlockByProximity(vehicle.id), vehicle);
   }
 
   /// UT.13 — Scansione QR (globale): apre lo scanner, individua il mezzo dal
@@ -642,7 +645,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _walkingRoute = const [];
     });
     await navigator.push(
-      MaterialPageRoute(builder: (_) => RideScreen(ride: ride, vehicle: vehicle)),
+      MaterialPageRoute(
+          builder: (_) => RideScreen(ride: ride, vehicle: vehicle)),
     );
     if (!mounted) return;
     _load();
@@ -1183,7 +1187,8 @@ class _ScanQrButton extends StatelessWidget {
               ? const SizedBox(
                   width: 24,
                   height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2.5, color: _kBg),
+                  child:
+                      CircularProgressIndicator(strokeWidth: 2.5, color: _kBg),
                 )
               : const Icon(Icons.qr_code_scanner, color: _kBg, size: 26),
         ),
@@ -1466,7 +1471,8 @@ class _PopInState extends State<_PopIn> with SingleTickerProviderStateMixin {
     duration: const Duration(milliseconds: 220),
   )..forward();
 
-  late final Animation<double> _scale = Tween<double>(begin: 0.6, end: 1).animate(
+  late final Animation<double> _scale =
+      Tween<double>(begin: 0.6, end: 1).animate(
     CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
   );
 
