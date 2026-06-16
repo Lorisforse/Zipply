@@ -12,6 +12,7 @@ import (
 	"github.com/lorisforse/ziply_backend/internal/usecase"
 	"github.com/lorisforse/ziply_backend/pkg/database"
 	"github.com/lorisforse/ziply_backend/pkg/middleware"
+	"github.com/lorisforse/ziply_backend/pkg/ors"
 )
 
 // main wires the layers together and starts the HTTP server.
@@ -48,6 +49,10 @@ func main() {
 	rideUsecase := usecase.NewRideUsecase(rideRepo)
 	rideHandler := handler.NewRideHandler(rideUsecase)
 
+	// UT.07 — Calcolo percorso mezzo→destinazione via OpenRouteService.
+	routeUsecase := usecase.NewRouteUsecase(vehicleRepo, forbiddenZoneRepo, ors.New())
+	routeHandler := handler.NewRouteHandler(routeUsecase)
+
 	mux := http.NewServeMux()
 
 	// Public routes.
@@ -57,6 +62,7 @@ func main() {
 
 	// Authenticated routes (JWT Bearer).
 	mux.Handle("GET /vehicles", middleware.JWTAuth(http.HandlerFunc(vehicleHandler.List)))
+	mux.Handle("POST /routes", middleware.JWTAuth(http.HandlerFunc(routeHandler.Compute)))
 	mux.Handle("POST /bookings", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Create)))
 	mux.Handle("POST /bookings/{id}/cancel", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Cancel)))
 	mux.Handle("POST /rides/unlock", middleware.JWTAuth(http.HandlerFunc(rideHandler.Unlock)))

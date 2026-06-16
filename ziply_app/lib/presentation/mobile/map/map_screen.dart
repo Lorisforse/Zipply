@@ -24,7 +24,9 @@ import 'package:ziply_app/services/api_exceptions.dart';
 import 'package:ziply_app/services/auth_service.dart';
 import 'package:ziply_app/services/booking_service.dart';
 import 'package:ziply_app/services/forbidden_zone_service.dart';
+import 'package:ziply_app/services/geocoding_service.dart';
 import 'package:ziply_app/services/ride_service.dart';
+import 'package:ziply_app/services/route_service.dart';
 import 'package:ziply_app/services/routing_service.dart';
 import 'package:ziply_app/services/vehicle_service.dart';
 
@@ -35,6 +37,7 @@ const Color _kBorder = Color(0xFF333333);
 const Color _kText = Color(0xFFF5F5F5);
 const Color _kDim = Color(0xFF777777);
 const Color _kAccent = Color(0xFFF69659);
+const Color _kGreen = Color(0xFF5DCAA5);
 
 // Centro di Zootropolis: fallback quando la posizione non è disponibile.
 const LatLng _kZootropolisCenter = LatLng(45.4654, 9.1859);
@@ -70,6 +73,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final BookingService _bookingService = BookingService();
   final RideService _rideService = RideService();
   final ForbiddenZoneService _forbiddenZoneService = ForbiddenZoneService();
+  final RouteService _routeService = RouteService();
+  final GeocodingService _geocodingService = GeocodingService();
   final MapController _mapController = MapController();
   // Chiave dello Scaffold per aprire il menu (endDrawer) dall'header.
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -96,6 +101,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   bool _cancelling = false;
   // UT.13 — guardia anti doppio-sblocco mentre la chiamata è in corso.
   bool _unlocking = false;
+
+  // UT.07 — Destinazione e percorso (mezzo→destinazione). La destinazione si
+  // imposta da una ricerca testuale; toccando un mezzo si vede il percorso per
+  // tipologia, calcolato dal backend (ORS) ed evitando le zone vietate.
+  LatLng? _destination;
+  String? _destinationLabel;
+  List<LatLng> _routePoints = const [];
+  VehicleModel? _routeVehicle;
+  double? _routeDistanceKm;
+  double? _routeDurationMin;
+  bool _routeFallback = false;
+  bool _routing = false;
 
   // Auto-refresh mezzi: la lista è una "fotografia" all'apertura, qui la
   // riallineiamo silenziosamente ogni 10 s (solo in browse mode).
@@ -385,6 +402,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     // Con una prenotazione attiva gli altri marker sono spenti e inerti.
     if (_activeBooking != null) return;
 
+    // UT.07 — Con una destinazione impostata, mostra prima il percorso
+    // mezzo→destinazione, poi apri la scheda per prenotare/sbloccare.
+    if (_destination != null) {
+      await _computeRouteFor(vehicle);
+      if (!mounted) return;
+    }
+
     final result =
         await VehicleBottomSheet.show(context, vehicle, _userPosition);
     if (result == null || !mounted) return;
@@ -410,6 +434,15 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _walkingRoute = _userPosition != null
             ? [_userPosition!, LatLng(vehicle.latitude, vehicle.longitude)]
             : const [];
+        // La destinazione/percorso si azzerano: la mappa passa in modalità
+        // "raggiungi il mezzo prenotato".
+        _destination = null;
+        _destinationLabel = null;
+        _routePoints = const [];
+        _routeVehicle = null;
+        _routeDistanceKm = null;
+        _routeDurationMin = null;
+        _routeFallback = false;
       });
       _loadWalkingRoute(vehicle);
     } else {
@@ -436,6 +469,84 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     );
     if (!mounted || route == null || route.isEmpty) return;
     setState(() => _walkingRoute = route);
+  }
+
+  /// UT.07 — Apre la ricerca testuale della destinazione; al risultato la imposta
+  /// e azzera l'eventuale percorso precedente, inquadrandola sulla mappa.
+  Future<void> _openDestinationSearch() async {
+    final result =
+        await _DestinationSearchSheet.show(context, _geocodingService);
+    if (result == null || !mounted) return;
+    setState(() {
+      _destination = result.point;
+      _destinationLabel = result.label;
+      _routePoints = const [];
+      _routeVehicle = null;
+      _routeDistanceKm = null;
+      _routeDurationMin = null;
+      _routeFallback = false;
+    });
+    _animatedMapMove(result.point, _kZoom);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: _kSurface,
+        content: Text(
+          'Destinazione impostata. Tocca un mezzo per vedere il percorso.',
+          style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+        ),
+      ),
+    );
+  }
+
+  /// UT.07 — Pulisce destinazione e percorso, tornando alla mappa "libera".
+  void _clearDestination() {
+    setState(() {
+      _destination = null;
+      _destinationLabel = null;
+      _routePoints = const [];
+      _routeVehicle = null;
+      _routeDistanceKm = null;
+      _routeDurationMin = null;
+      _routeFallback = false;
+    });
+  }
+
+  /// UT.07 — Calcola e disegna il percorso dal [vehicle] alla destinazione
+  /// impostata, mostrando distanza e durata. Errore → snackbar non bloccante.
+  Future<void> _computeRouteFor(VehicleModel vehicle) async {
+    final dest = _destination;
+    if (dest == null) return;
+    setState(() => _routing = true);
+    try {
+      final route = await _routeService.computeRoute(
+        vehicleId: vehicle.id,
+        destination: dest,
+      );
+      if (!mounted) return;
+      setState(() {
+        _routePoints = route.points;
+        _routeVehicle = vehicle;
+        _routeDistanceKm = route.distanceKm;
+        _routeDurationMin = route.durationMinutes;
+        _routeFallback = route.fallback;
+        _routing = false;
+      });
+    } on SessionExpiredException {
+      if (mounted) setState(() => _routing = false);
+      await _handleSessionExpired();
+    } on Exception catch (e) {
+      if (!mounted) return;
+      setState(() => _routing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: _kSurface,
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+            style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+          ),
+        ),
+      );
+    }
   }
 
   /// Annulla la prenotazione: prima chiede conferma, poi chiama il backend e,
@@ -643,6 +754,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _activeBooking = null;
       _bookedVehicle = null;
       _walkingRoute = const [];
+      _destination = null;
+      _destinationLabel = null;
+      _routePoints = const [];
+      _routeVehicle = null;
     });
     await navigator.push(
       MaterialPageRoute(
@@ -686,6 +801,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               _FilterBar(
                 selected: _filter,
                 onChanged: (f) => setState(() => _filter = f),
+              ),
+            // UT.07 — Barra destinazione: ricerca testuale del punto di arrivo.
+            if (_state == _ViewState.success && _activeBooking == null)
+              _DestinationBar(
+                label: _destinationLabel,
+                onTap: _openDestinationSearch,
+                onClear: _clearDestination,
               ),
             Expanded(child: _buildBody(context)),
           ],
@@ -761,6 +883,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   ),
                 ],
               ),
+            // UT.07 — Percorso mezzo→destinazione (verde), sopra il pedonale.
+            if (_routePoints.length >= 2)
+              PolylineLayer(
+                polylines: [
+                  Polyline(
+                    points: _routePoints,
+                    strokeWidth: 5,
+                    color: _kGreen,
+                  ),
+                ],
+              ),
             // Marker con clustering dipendente dallo zoom: il Builder legge la
             // camera corrente e si ricostruisce a ogni pan/zoom (MapCamera.of).
             Builder(
@@ -782,6 +915,26 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             right: 70,
             top: 16,
             child: _ForbiddenZoneBanner(zone: _currentForbiddenZone!),
+          ),
+        // UT.07 — Info percorso (distanza + durata). Scende sotto il banner
+        // "zona vietata" quando entrambi sono presenti.
+        if (_routeVehicle != null && _routeDistanceKm != null)
+          Positioned(
+            left: 12,
+            right: 70,
+            top: _currentForbiddenZone != null ? 66 : 16,
+            child: _RouteInfoChip(
+              distanceKm: _routeDistanceKm!,
+              durationMin: _routeDurationMin ?? 0,
+              fallback: _routeFallback,
+            ),
+          ),
+        if (_routing)
+          const Positioned(
+            left: 0,
+            right: 0,
+            top: 70,
+            child: Center(child: _RoutingChip()),
           ),
         // Pulsante per aprire la lista mezzi vicini (solo in browse mode).
         if (_activeBooking == null)
@@ -879,6 +1032,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           width: 56,
           height: 56,
           child: _UserDot(key: const ValueKey('user-dot'), ping: _recenterPing),
+        ),
+      );
+    }
+    // UT.07 — Pin della destinazione impostata.
+    if (_destination != null) {
+      markers.add(
+        Marker(
+          point: _destination!,
+          width: 40,
+          height: 40,
+          rotate: true,
+          child: const _DestinationMarker(),
         ),
       );
     }
@@ -1788,6 +1953,325 @@ class _ErrorView extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── UT.07 · Barra destinazione (ricerca testuale) ──────────────────────────
+class _DestinationBar extends StatelessWidget {
+  const _DestinationBar({
+    required this.label,
+    required this.onTap,
+    required this.onClear,
+  });
+
+  final String? label;
+  final VoidCallback onTap;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final has = label != null;
+    return Container(
+      color: _kBg,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: _kSurface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: has ? _kGreen : _kBorder),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.place_outlined,
+                  color: has ? _kGreen : _kDim, size: 19),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  has ? label! : 'Imposta una destinazione',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.barlow(
+                    fontSize: 14,
+                    color: has ? _kText : _kDim,
+                  ),
+                ),
+              ),
+              if (has)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onClear,
+                  child: const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Icon(Icons.close, color: _kDim, size: 18),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── UT.07 · Pin destinazione ───────────────────────────────────────────────
+class _DestinationMarker extends StatelessWidget {
+  const _DestinationMarker();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Icon(Icons.place, color: _kGreen, size: 38);
+  }
+}
+
+// ── UT.07 · Chip info percorso (distanza + durata) ─────────────────────────
+class _RouteInfoChip extends StatelessWidget {
+  const _RouteInfoChip({
+    required this.distanceKm,
+    required this.durationMin,
+    required this.fallback,
+  });
+
+  final double distanceKm;
+  final double durationMin;
+  final bool fallback;
+
+  @override
+  Widget build(BuildContext context) {
+    final mins = durationMin <= 0 ? 1 : durationMin.ceil();
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: _kSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _kGreen),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x73000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.alt_route, color: _kGreen, size: 19),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              '${distanceKm.toStringAsFixed(1)} km · ~$mins min'
+              '${fallback ? '  (stima)' : ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.barlowCondensed(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                color: _kText,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── UT.07 · Indicatore "calcolo percorso" ──────────────────────────────────
+class _RoutingChip extends StatelessWidget {
+  const _RoutingChip();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      decoration: BoxDecoration(
+        color: _kSurface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _kBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2, color: _kGreen),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            'Calcolo percorso…',
+            style: GoogleFonts.barlow(fontSize: 13, color: _kText),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── UT.07 · Bottom sheet ricerca destinazione ──────────────────────────────
+class _DestinationSearchSheet extends StatefulWidget {
+  const _DestinationSearchSheet(this.geocoding);
+
+  final GeocodingService geocoding;
+
+  static Future<GeoResult?> show(
+    BuildContext context,
+    GeocodingService geocoding,
+  ) {
+    return showModalBottomSheet<GeoResult>(
+      context: context,
+      backgroundColor: _kBg,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _DestinationSearchSheet(geocoding),
+    );
+  }
+
+  @override
+  State<_DestinationSearchSheet> createState() =>
+      _DestinationSearchSheetState();
+}
+
+class _DestinationSearchSheetState extends State<_DestinationSearchSheet> {
+  final TextEditingController _controller = TextEditingController();
+  Timer? _debounce;
+  List<GeoResult> _results = const [];
+  bool _searching = false;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 450), () => _search(value));
+  }
+
+  Future<void> _search(String value) async {
+    final q = value.trim();
+    if (q.length < 3) {
+      if (mounted) {
+        setState(() {
+          _results = const [];
+          _searching = false;
+        });
+      }
+      return;
+    }
+    setState(() => _searching = true);
+    final results = await widget.geocoding.search(q);
+    if (!mounted) return;
+    setState(() {
+      _results = results;
+      _searching = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final typedEnough = _controller.text.trim().length >= 3;
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'DESTINAZIONE',
+                style: GoogleFonts.barlowCondensed(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1.2,
+                  color: _kDim,
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _controller,
+                autofocus: true,
+                onChanged: _onChanged,
+                onSubmitted: _search,
+                style: GoogleFonts.barlow(fontSize: 15, color: _kText),
+                decoration: InputDecoration(
+                  hintText: 'Cerca un indirizzo o un luogo',
+                  hintStyle: GoogleFonts.barlow(fontSize: 14, color: _kDim),
+                  prefixIcon: const Icon(Icons.search, color: _kDim, size: 20),
+                  filled: true,
+                  fillColor: _kSurface,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: _kBorder),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: _kAccent),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (_searching)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2.5, color: _kAccent),
+                  ),
+                )
+              else if (_results.isEmpty && typedEnough)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Text(
+                    'Nessun risultato',
+                    style: GoogleFonts.barlow(fontSize: 14, color: _kDim),
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _results.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, color: _kBorder),
+                    itemBuilder: (context, i) {
+                      final r = _results[i];
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.place_outlined,
+                            color: _kAccent, size: 20),
+                        title: Text(
+                          r.label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              GoogleFonts.barlow(fontSize: 14, color: _kText),
+                        ),
+                        onTap: () => Navigator.of(context).pop(r),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

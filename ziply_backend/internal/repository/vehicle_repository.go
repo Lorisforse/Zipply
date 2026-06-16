@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/lorisforse/ziply_backend/internal/domain"
@@ -57,4 +59,26 @@ func (r *VehicleRepository) ListAvailable(ctx context.Context, filter *domain.Ge
 		return nil, err
 	}
 	return vehicles, nil
+}
+
+// GetByID returns the vehicle with the given id joined with its type, or
+// domain.ErrVehicleNotFound if it does not exist. Usato dal calcolo percorso
+// (UT.07) per ricavare posizione e tipologia del mezzo selezionato.
+func (r *VehicleRepository) GetByID(ctx context.Context, id string) (*domain.Vehicle, error) {
+	const query = `SELECT v.id, vt.nome, v.qr_code, v.latitude, v.longitude, v.battery_level, vt.tariffa_al_minuto
+		FROM vehicles v
+		JOIN vehicle_types vt ON vt.id = v.type_id
+		WHERE v.id = $1`
+
+	var v domain.Vehicle
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&v.ID, &v.Type, &v.QrCode, &v.Latitude, &v.Longitude, &v.BatteryLevel, &v.TariffaAlMinuto,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrVehicleNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &v, nil
 }
