@@ -53,6 +53,10 @@ func main() {
 	routeUsecase := usecase.NewRouteUsecase(vehicleRepo, forbiddenZoneRepo, ors.New())
 	routeHandler := handler.NewRouteHandler(routeUsecase)
 
+	// UT.08 — Suggerimento tipologia mezzo per il tragitto.
+	suggestionUsecase := usecase.NewSuggestionUsecase()
+	suggestionHandler := handler.NewSuggestionHandler(suggestionUsecase)
+
 	mux := http.NewServeMux()
 
 	// Public routes.
@@ -63,6 +67,7 @@ func main() {
 	// Authenticated routes (JWT Bearer).
 	mux.Handle("GET /vehicles", middleware.JWTAuth(http.HandlerFunc(vehicleHandler.List)))
 	mux.Handle("POST /routes", middleware.JWTAuth(http.HandlerFunc(routeHandler.Compute)))
+	mux.Handle("POST /suggest-vehicle", middleware.JWTAuth(http.HandlerFunc(suggestionHandler.Suggest)))
 	mux.Handle("POST /bookings", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Create)))
 	mux.Handle("POST /bookings/{id}/cancel", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Cancel)))
 	mux.Handle("POST /rides/unlock", middleware.JWTAuth(http.HandlerFunc(rideHandler.Unlock)))

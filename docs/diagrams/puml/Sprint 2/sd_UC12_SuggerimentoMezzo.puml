@@ -8,23 +8,19 @@ skinparam hyperlinkUnderline false
 actor ":Utente" as Utente
 participant ":App Flutter" as App
 participant ":Backend Go" as Backend
-participant ":OpenRouteService" as ORS
 
-Utente -> App : inserisciDestinazione(destinazione)
+Utente -> App : inserisce la destinazione\n(con un mezzo selezionato)
 
-App -> Backend : POST /suggest-vehicle\n{ fromLat, fromLng, destLat, destLng }
+App -> Backend : POST /suggest-vehicle\n{ from_lat, from_lng, dest_lat, dest_lng }
 
-Backend -> ORS : GET /directions\n{ profili: bici / auto }
-ORS --> Backend : { distanzaKm, tipologieStrade }
+Backend -> Backend : calcolaDistanza(\n  haversine: mezzo -> destinazione)
 
-Backend -> Backend : valutaEuristica(\n  distanza, tipologieStrade)
-
-alt ~[distanza_elevata_o_superstrada~]
-    Backend --> App : 200 OK\n{ suggerito: "auto" }
-else ~[percorso_breve_con_ciclabili~]
-    Backend --> App : 200 OK\n{ suggerito: "bici / scooter" }
+alt ~[distanza >= soglia (~3 km)~]
+    Backend --> App : 200 OK\n{ suggested_type: "auto" }
+else ~[distanza < soglia~]
+    Backend --> App : 200 OK\n{ suggested_type: "bici_scooter" }
 end
 
-App --> Utente : mostraSuggerimento(\n  prima della conferma prenotazione)
+App --> Utente : mostra il consiglio nel pannello\n(conferma se il mezzo scelto coincide,\n altrimenti suggerisce l'alternativa)
 
 @enduml

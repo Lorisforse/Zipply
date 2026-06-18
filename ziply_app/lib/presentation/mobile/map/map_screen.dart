@@ -114,6 +114,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   double? _routeCost;
   bool _routeFallback = false;
   bool _routing = false;
+  // UT.08 — tipologia consigliata per il tragitto corrente (null = nessun
+  // consiglio disponibile). Best-effort: un errore non blocca il percorso.
+  SuggestedCategory? _suggestion;
 
   // Auto-refresh mezzi: la lista è una "fotografia" all'apertura, qui la
   // riallineiamo silenziosamente ogni 10 s (solo in browse mode).
@@ -506,7 +509,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _routeDurationMin = null;
       _routeCost = null;
       _routeFallback = false;
+      _suggestion = null;
     });
+  }
+
+  /// UT.08 — Carica (best-effort) la tipologia consigliata per il tragitto. Un
+  /// errore non viene mostrato: il consiglio semplicemente non compare.
+  Future<void> _loadSuggestion(VehicleModel vehicle, LatLng dest) async {
+    try {
+      final s = await _routeService.suggestVehicle(
+        from: LatLng(vehicle.latitude, vehicle.longitude),
+        destination: dest,
+      );
+      if (!mounted) return;
+      setState(() => _suggestion = s.category);
+    } on Exception {
+      // best-effort: nessun consiglio mostrato
+    }
   }
 
   /// UT.07 — Calcola e disegna il percorso dal [vehicle] alla destinazione
@@ -514,7 +533,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Future<void> _computeRouteFor(VehicleModel vehicle) async {
     final dest = _destination;
     if (dest == null) return;
-    setState(() => _routing = true);
+    setState(() {
+      _routing = true;
+      _suggestion = null;
+    });
     try {
       final route = await _routeService.computeRoute(
         vehicleId: vehicle.id,
@@ -530,6 +552,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _routeFallback = route.fallback;
         _routing = false;
       });
+      await _loadSuggestion(vehicle, dest);
     } on SessionExpiredException {
       if (mounted) setState(() => _routing = false);
       await _handleSessionExpired();
@@ -994,6 +1017,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               durationMin: _routeDurationMin ?? 0,
               estimatedCost: _routeCost ?? 0,
               fallback: _routeFallback,
+              suggestion: _suggestion,
               onContinue: _openSheetForRouteVehicle,
               onClear: _clearDestination,
             ),
@@ -2116,6 +2140,7 @@ class _RoutePreviewPanel extends StatelessWidget {
     required this.durationMin,
     required this.estimatedCost,
     required this.fallback,
+    required this.suggestion,
     required this.onContinue,
     required this.onClear,
   });
@@ -2125,13 +2150,55 @@ class _RoutePreviewPanel extends StatelessWidget {
   final double durationMin;
   final double estimatedCost;
   final bool fallback;
+
+  /// UT.08 — tipologia consigliata per il tragitto (null = nessun consiglio).
+  final SuggestedCategory? suggestion;
+
   final VoidCallback onContinue;
   final VoidCallback onClear;
+
+  /// UT.08 — Riga di consiglio: conferma se il mezzo scelto è la tipologia
+  /// consigliata, altrimenti suggerisce l'alternativa. null = niente consiglio.
+  Widget? _consiglio() {
+    final s = suggestion;
+    if (s == null || s == SuggestedCategory.unknown) return null;
+    final selected = vehicle.kind == VehicleType.car
+        ? SuggestedCategory.auto
+        : SuggestedCategory.biciScooter;
+    final match = selected == s;
+    final label = s == SuggestedCategory.auto ? "l'auto" : 'bici o monopattino';
+    final text = match
+        ? 'Ottima scelta: è il mezzo consigliato per questo tragitto.'
+        : 'Per questo tragitto consigliamo $label.';
+    final color = match ? _kGreen : _kAccent;
+    final icon = match ? Icons.check_circle_outline : Icons.lightbulb_outline;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.barlow(fontSize: 13, color: _kText),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final mins = durationMin <= 0 ? 1 : durationMin.ceil();
     final title = vehicle.type.isEmpty ? 'Mezzo' : vehicle.type;
+    final consiglio = _consiglio();
     return Container(
       decoration: const BoxDecoration(
         color: _kBg,
@@ -2213,6 +2280,10 @@ class _RoutePreviewPanel extends StatelessWidget {
                   ),
                 ],
               ),
+              if (consiglio != null) ...[
+                const SizedBox(height: 12),
+                consiglio,
+              ],
               const SizedBox(height: 14),
               SizedBox(
                 height: 50,
