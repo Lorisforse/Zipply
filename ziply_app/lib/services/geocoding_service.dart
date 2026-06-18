@@ -24,15 +24,26 @@ class GeocodingService {
   static const String _baseUrl = 'https://nominatim.openstreetmap.org';
 
   /// Cerca [query] e restituisce fino a 6 risultati (vuoto se nulla o errore).
-  Future<List<GeoResult>> search(String query) async {
+  /// Se [near] è fornito, limita i risultati a un riquadro attorno a quel punto
+  /// (~30-40 km, viewbox + bounded=1), così la ricerca resta pertinente alla
+  /// zona invece di restituire vie omonime sparse nel mondo.
+  Future<List<GeoResult>> search(String query, {LatLng? near}) async {
     final q = query.trim();
     if (q.isEmpty) return const [];
 
-    final uri = Uri.parse('$_baseUrl/search').replace(queryParameters: {
+    final params = <String, String>{
       'q': q,
       'format': 'jsonv2',
       'limit': '6',
-    });
+    };
+    if (near != null) {
+      const d = 0.4; // ~30-40 km di lato attorno alla posizione
+      params['viewbox'] = '${near.longitude - d},${near.latitude + d},'
+          '${near.longitude + d},${near.latitude - d}';
+      params['bounded'] = '1';
+    }
+
+    final uri = Uri.parse('$_baseUrl/search').replace(queryParameters: params);
 
     final http.Response response;
     try {

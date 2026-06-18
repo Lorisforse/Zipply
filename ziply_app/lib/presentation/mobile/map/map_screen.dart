@@ -5,7 +5,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
 import 'package:ziply_app/data/models/forbidden_zone_model.dart';
@@ -17,6 +16,7 @@ import 'package:ziply_app/presentation/mobile/map/widgets/nearby_vehicles_sheet.
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_bottom_sheet.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
+import 'package:ziply_app/presentation/mobile/map/widgets/ziply_tile_layer.dart';
 import 'package:ziply_app/presentation/mobile/menu/menu_drawer.dart';
 import 'package:ziply_app/presentation/mobile/ride/qr_scan_screen.dart';
 import 'package:ziply_app/presentation/mobile/ride/ride_screen.dart';
@@ -402,11 +402,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     // Con una prenotazione attiva gli altri marker sono spenti e inerti.
     if (_activeBooking != null) return;
 
-    // UT.07 — Con una destinazione impostata, mostra prima il percorso
-    // mezzo→destinazione, poi apri la scheda per prenotare/sbloccare.
+    // UT.07 — Con una destinazione impostata il tap mostra SOLO il percorso
+    // mezzo→destinazione (niente scheda): si prosegue dal pannello anteprima.
     if (_destination != null) {
       await _computeRouteFor(vehicle);
-      if (!mounted) return;
+      return;
     }
 
     final result =
@@ -474,8 +474,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// UT.07 — Apre la ricerca testuale della destinazione; al risultato la imposta
   /// e azzera l'eventuale percorso precedente, inquadrandola sulla mappa.
   Future<void> _openDestinationSearch() async {
-    final result =
-        await _DestinationSearchSheet.show(context, _geocodingService);
+    final result = await _DestinationSearchScreen.show(
+      context,
+      _geocodingService,
+      _userPosition ?? _center,
+    );
     if (result == null || !mounted) return;
     setState(() {
       _destination = result.point;
@@ -487,15 +490,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _routeFallback = false;
     });
     _animatedMapMove(result.point, _kZoom);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: _kSurface,
-        content: Text(
-          'Destinazione impostata. Tocca un mezzo per vedere il percorso.',
-          style: GoogleFonts.barlow(fontSize: 14, color: _kText),
-        ),
-      ),
-    );
   }
 
   /// UT.07 — Pulisce destinazione e percorso, tornando alla mappa "libera".
@@ -547,6 +541,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         ),
       );
     }
+  }
+
+  /// UT.07 — Dal pannello anteprima percorso: apre la scheda del mezzo scelto
+  /// per prenotare o sbloccare.
+  Future<void> _openSheetForRouteVehicle() async {
+    final vehicle = _routeVehicle;
+    if (vehicle == null) return;
+    final result =
+        await VehicleBottomSheet.show(context, vehicle, _userPosition);
+    if (result == null || !mounted) return;
+    await _handleSheetResult(result, vehicle);
   }
 
   /// Annulla la prenotazione: prima chiede conferma, poi chiama il backend e,
@@ -849,12 +854,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             backgroundColor: _kBg,
           ),
           children: [
-            TileLayer(
-              urlTemplate:
-                  'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key=$kStadiaApiKey',
-              retinaMode: RetinaMode.isHighDensity(context),
-              userAgentPackageName: 'it.lorisamato.ziply',
-            ),
+            ziplyTileLayer(context),
             // UT.18 — Zone vietate: poligoni rossi semi-trasparenti, sopra le
             // tile ma sotto percorso e marker.
             if (_forbiddenZones.isNotEmpty)
@@ -916,18 +916,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             top: 16,
             child: _ForbiddenZoneBanner(zone: _currentForbiddenZone!),
           ),
-        // UT.07 — Info percorso (distanza + durata). Scende sotto il banner
-        // "zona vietata" quando entrambi sono presenti.
-        if (_routeVehicle != null && _routeDistanceKm != null)
+        // UT.07 — Banner "scegli un mezzo": destinazione impostata ma mezzo
+        // ancora non scelto. Scende sotto il banner "zona vietata" se presente.
+        if (_destination != null &&
+            _routeVehicle == null &&
+            _activeBooking == null)
           Positioned(
             left: 12,
             right: 70,
             top: _currentForbiddenZone != null ? 66 : 16,
-            child: _RouteInfoChip(
-              distanceKm: _routeDistanceKm!,
-              durationMin: _routeDurationMin ?? 0,
-              fallback: _routeFallback,
-            ),
+            child: const _SelectVehicleBanner(),
           ),
         if (_routing)
           const Positioned(
@@ -936,8 +934,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             top: 70,
             child: Center(child: _RoutingChip()),
           ),
-        // Pulsante per aprire la lista mezzi vicini (solo in browse mode).
-        if (_activeBooking == null)
+        // Pulsante mezzi vicini + scan QR: solo in browse mode e quando non è
+        // mostrato il pannello anteprima percorso (che occupa il fondo).
+        if (_activeBooking == null && _routeVehicle == null)
           Positioned(
             left: 0,
             right: 0,
@@ -951,7 +950,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           ),
         // UT.13 — Sblocco via QR (globale): arriva davanti al mezzo, scansiona e
         // parte la corsa, senza bisogno di prenotare.
-        if (_activeBooking == null)
+        if (_activeBooking == null && _routeVehicle == null)
           Positioned(
             right: 16,
             bottom: 24,
@@ -973,6 +972,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               unlocking: _unlocking,
               onUnlockProximity: _onUnlockProximity,
               onCancel: _onCancelBooking,
+            ),
+          ),
+        // UT.07 — Anteprima percorso: mezzo scelto + distanza/durata, con CTA
+        // per procedere a prenota/sblocco. La scheda NON si apre da sola.
+        if (_activeBooking == null &&
+            _destination != null &&
+            _routeVehicle != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _RoutePreviewPanel(
+              vehicle: _routeVehicle!,
+              distanceKm: _routeDistanceKm ?? 0,
+              durationMin: _routeDurationMin ?? 0,
+              fallback: _routeFallback,
+              onContinue: _openSheetForRouteVehicle,
+              onClear: _clearDestination,
             ),
           ),
       ],
@@ -1977,44 +1994,49 @@ class _DestinationBar extends StatelessWidget {
     return Container(
       color: _kBg,
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: _kSurface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: has ? _kGreen : _kBorder),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.place_outlined,
-                  color: has ? _kGreen : _kDim, size: 19),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Text(
-                  has ? label! : 'Imposta una destinazione',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.barlow(
-                    fontSize: 14,
-                    color: has ? _kText : _kDim,
+      child: Container(
+        height: 42,
+        padding: const EdgeInsets.only(left: 12, right: 4),
+        decoration: BoxDecoration(
+          color: _kSurface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: has ? _kGreen : _kBorder),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.place_outlined, color: has ? _kGreen : _kDim, size: 19),
+            const SizedBox(width: 9),
+            // Area tappabile (riempie lo spazio) per aprire la ricerca.
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onTap,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    has ? label! : 'Imposta una destinazione',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.barlow(
+                      fontSize: 14,
+                      color: has ? _kText : _kDim,
+                    ),
                   ),
                 ),
               ),
-              if (has)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: onClear,
-                  child: const Padding(
-                    padding: EdgeInsets.only(left: 8),
-                    child: Icon(Icons.close, color: _kDim, size: 18),
-                  ),
-                ),
-            ],
-          ),
+            ),
+            // X indipendente (IconButton con il proprio tap: niente annidamento
+            // di GestureDetector, che prima "mangiava" il tocco sulla X).
+            if (has)
+              IconButton(
+                onPressed: onClear,
+                icon: const Icon(Icons.close, color: _kDim, size: 18),
+                splashRadius: 18,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                tooltip: 'Rimuovi destinazione',
+              ),
+          ],
         ),
       ),
     );
@@ -2031,21 +2053,12 @@ class _DestinationMarker extends StatelessWidget {
   }
 }
 
-// ── UT.07 · Chip info percorso (distanza + durata) ─────────────────────────
-class _RouteInfoChip extends StatelessWidget {
-  const _RouteInfoChip({
-    required this.distanceKm,
-    required this.durationMin,
-    required this.fallback,
-  });
-
-  final double distanceKm;
-  final double durationMin;
-  final bool fallback;
+// ── UT.07 · Banner "tocca un mezzo" (stile banner zona vietata, in verde) ──
+class _SelectVehicleBanner extends StatelessWidget {
+  const _SelectVehicleBanner();
 
   @override
   Widget build(BuildContext context) {
-    final mins = durationMin <= 0 ? 1 : durationMin.ceil();
     return Container(
       height: 42,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -2063,23 +2076,191 @@ class _RouteInfoChip extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.alt_route, color: _kGreen, size: 19),
+          const Icon(Icons.touch_app_outlined, color: _kGreen, size: 20),
+          const SizedBox(width: 8),
+          Text(
+            'TOCCA UN MEZZO',
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+              color: _kGreen,
+            ),
+          ),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
-              '${distanceKm.toStringAsFixed(1)} km · ~$mins min'
-              '${fallback ? '  (stima)' : ''}',
+              'per vedere il percorso',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-                color: _kText,
-              ),
+              style: GoogleFonts.barlow(fontSize: 13, color: _kText),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── UT.07 · Pannello anteprima percorso (mezzo scelto + km/min + CTA) ──────
+class _RoutePreviewPanel extends StatelessWidget {
+  const _RoutePreviewPanel({
+    required this.vehicle,
+    required this.distanceKm,
+    required this.durationMin,
+    required this.fallback,
+    required this.onContinue,
+    required this.onClear,
+  });
+
+  final VehicleModel vehicle;
+  final double distanceKm;
+  final double durationMin;
+  final bool fallback;
+  final VoidCallback onContinue;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final mins = durationMin <= 0 ? 1 : durationMin.ceil();
+    final title = vehicle.type.isEmpty ? 'Mezzo' : vehicle.type;
+    return Container(
+      decoration: const BoxDecoration(
+        color: _kBg,
+        border: Border(top: BorderSide(color: _kBorder)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x73000000),
+            blurRadius: 30,
+            offset: Offset(0, -12),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'PERCORSO VERSO LA DESTINAZIONE',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.2,
+                            color: _kDim,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          title,
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                            color: _kText,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.alt_route, color: _kGreen, size: 18),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${distanceKm.toStringAsFixed(1)} km',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w700,
+                              height: 1,
+                              color: _kGreen,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Text(
+                        '~$mins min${fallback ? ' (stima)' : ''}',
+                        style: GoogleFonts.barlow(fontSize: 12, color: _kDim),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                height: 50,
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: onContinue,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kAccent,
+                    foregroundColor: _kBg,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  child: Text(
+                    'PRENOTA O SBLOCCA',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                      color: _kBg,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Tocca un altro mezzo per confrontare il percorso.',
+                style: GoogleFonts.barlow(
+                  fontSize: 12.5,
+                  height: 1.3,
+                  color: _kDim,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 44,
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: onClear,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _kDim,
+                    side: const BorderSide(color: _kBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  child: Text(
+                    'ANNULLA DESTINAZIONE',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.6,
+                      color: _kDim,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2117,33 +2298,33 @@ class _RoutingChip extends StatelessWidget {
   }
 }
 
-// ── UT.07 · Bottom sheet ricerca destinazione ──────────────────────────────
-class _DestinationSearchSheet extends StatefulWidget {
-  const _DestinationSearchSheet(this.geocoding);
+// ── UT.07 · Pagina ricerca destinazione (full-screen, niente jank da sheet) ──
+class _DestinationSearchScreen extends StatefulWidget {
+  const _DestinationSearchScreen(this.geocoding, this.near);
 
   final GeocodingService geocoding;
+
+  /// Centro attorno a cui limitare la ricerca (posizione utente o centro mappa).
+  final LatLng near;
 
   static Future<GeoResult?> show(
     BuildContext context,
     GeocodingService geocoding,
+    LatLng near,
   ) {
-    return showModalBottomSheet<GeoResult>(
-      context: context,
-      backgroundColor: _kBg,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    return Navigator.of(context).push<GeoResult>(
+      MaterialPageRoute(
+        builder: (_) => _DestinationSearchScreen(geocoding, near),
       ),
-      builder: (_) => _DestinationSearchSheet(geocoding),
     );
   }
 
   @override
-  State<_DestinationSearchSheet> createState() =>
-      _DestinationSearchSheetState();
+  State<_DestinationSearchScreen> createState() =>
+      _DestinationSearchScreenState();
 }
 
-class _DestinationSearchSheetState extends State<_DestinationSearchSheet> {
+class _DestinationSearchScreenState extends State<_DestinationSearchScreen> {
   final TextEditingController _controller = TextEditingController();
   Timer? _debounce;
   List<GeoResult> _results = const [];
@@ -2173,7 +2354,7 @@ class _DestinationSearchSheetState extends State<_DestinationSearchSheet> {
       return;
     }
     setState(() => _searching = true);
-    final results = await widget.geocoding.search(q);
+    final results = await widget.geocoding.search(q, near: widget.near);
     if (!mounted) return;
     setState(() {
       _results = results;
@@ -2183,97 +2364,73 @@ class _DestinationSearchSheetState extends State<_DestinationSearchSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final typedEnough = _controller.text.trim().length >= 3;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottomInset),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'DESTINAZIONE',
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.2,
-                  color: _kDim,
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: _controller,
-                autofocus: true,
-                onChanged: _onChanged,
-                onSubmitted: _search,
-                style: GoogleFonts.barlow(fontSize: 15, color: _kText),
-                decoration: InputDecoration(
-                  hintText: 'Cerca un indirizzo o un luogo',
-                  hintStyle: GoogleFonts.barlow(fontSize: 14, color: _kDim),
-                  prefixIcon: const Icon(Icons.search, color: _kDim, size: 20),
-                  filled: true,
-                  fillColor: _kSurface,
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: _kBorder),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: _kAccent),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (_searching)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-                  child: Center(
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2.5, color: _kAccent),
-                  ),
-                )
-              else if (_results.isEmpty && typedEnough)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Text(
-                    'Nessun risultato',
-                    style: GoogleFonts.barlow(fontSize: 14, color: _kDim),
-                  ),
-                )
-              else
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 320),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _results.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 1, color: _kBorder),
-                    itemBuilder: (context, i) {
-                      final r = _results[i];
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.place_outlined,
-                            color: _kAccent, size: 20),
-                        title: Text(
-                          r.label,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style:
-                              GoogleFonts.barlow(fontSize: 14, color: _kText),
-                        ),
-                        onTap: () => Navigator.of(context).pop(r),
-                      );
-                    },
-                  ),
-                ),
-            ],
+    return Scaffold(
+      backgroundColor: _kBg,
+      appBar: AppBar(
+        backgroundColor: _kBg,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: _kText),
+        titleSpacing: 0,
+        title: TextField(
+          controller: _controller,
+          autofocus: true,
+          onChanged: _onChanged,
+          onSubmitted: _search,
+          textInputAction: TextInputAction.search,
+          style: GoogleFonts.barlow(fontSize: 16, color: _kText),
+          decoration: InputDecoration(
+            hintText: 'Cerca un indirizzo o un luogo',
+            hintStyle: GoogleFonts.barlow(fontSize: 15, color: _kDim),
+            border: InputBorder.none,
           ),
         ),
+        actions: [
+          if (_controller.text.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.close, color: _kDim),
+              tooltip: 'Cancella',
+              onPressed: () {
+                _controller.clear();
+                setState(() => _results = const []);
+              },
+            ),
+        ],
       ),
+      body: _buildResults(typedEnough),
+    );
+  }
+
+  Widget _buildResults(bool typedEnough) {
+    if (_searching) {
+      return const Center(
+        child: CircularProgressIndicator(strokeWidth: 2.5, color: _kAccent),
+      );
+    }
+    if (_results.isEmpty) {
+      return Center(
+        child: Text(
+          typedEnough ? 'Nessun risultato' : 'Scrivi almeno 3 caratteri',
+          style: GoogleFonts.barlow(fontSize: 14, color: _kDim),
+        ),
+      );
+    }
+    return ListView.separated(
+      itemCount: _results.length,
+      separatorBuilder: (_, __) => const Divider(height: 1, color: _kBorder),
+      itemBuilder: (context, i) {
+        final r = _results[i];
+        return ListTile(
+          leading: const Icon(Icons.place_outlined, color: _kAccent, size: 20),
+          title: Text(
+            r.label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+          ),
+          onTap: () => Navigator.of(context).pop(r),
+        );
+      },
     );
   }
 }

@@ -9,11 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/data/models/ride_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
+import 'package:ziply_app/presentation/mobile/map/widgets/ziply_tile_layer.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/presentation/mobile/ride/ride_summary_screen.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
@@ -69,12 +69,7 @@ class RideScreen extends StatelessWidget {
                 ),
               ),
               children: [
-                TileLayer(
-                  urlTemplate:
-                      'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png?api_key=$kStadiaApiKey',
-                  retinaMode: RetinaMode.isHighDensity(context),
-                  userAgentPackageName: 'it.lorisamato.ziply',
-                ),
+                ziplyTileLayer(context),
                 MarkerLayer(
                   markers: [
                     Marker(
