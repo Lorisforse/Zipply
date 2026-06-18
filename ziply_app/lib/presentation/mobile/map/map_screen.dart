@@ -111,6 +111,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   VehicleModel? _routeVehicle;
   double? _routeDistanceKm;
   double? _routeDurationMin;
+  double? _routeCost;
   bool _routeFallback = false;
   bool _routing = false;
 
@@ -442,6 +443,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _routeVehicle = null;
         _routeDistanceKm = null;
         _routeDurationMin = null;
+        _routeCost = null;
         _routeFallback = false;
       });
       _loadWalkingRoute(vehicle);
@@ -487,6 +489,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _routeVehicle = null;
       _routeDistanceKm = null;
       _routeDurationMin = null;
+      _routeCost = null;
       _routeFallback = false;
     });
     _animatedMapMove(result.point, _kZoom);
@@ -501,6 +504,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _routeVehicle = null;
       _routeDistanceKm = null;
       _routeDurationMin = null;
+      _routeCost = null;
       _routeFallback = false;
     });
   }
@@ -522,6 +526,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _routeVehicle = vehicle;
         _routeDistanceKm = route.distanceKm;
         _routeDurationMin = route.durationMinutes;
+        _routeCost = route.estimatedCost;
         _routeFallback = route.fallback;
         _routing = false;
       });
@@ -987,6 +992,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               vehicle: _routeVehicle!,
               distanceKm: _routeDistanceKm ?? 0,
               durationMin: _routeDurationMin ?? 0,
+              estimatedCost: _routeCost ?? 0,
               fallback: _routeFallback,
               onContinue: _openSheetForRouteVehicle,
               onClear: _clearDestination,
@@ -2108,6 +2114,7 @@ class _RoutePreviewPanel extends StatelessWidget {
     required this.vehicle,
     required this.distanceKm,
     required this.durationMin,
+    required this.estimatedCost,
     required this.fallback,
     required this.onContinue,
     required this.onClear,
@@ -2116,6 +2123,7 @@ class _RoutePreviewPanel extends StatelessWidget {
   final VehicleModel vehicle;
   final double distanceKm;
   final double durationMin;
+  final double estimatedCost;
   final bool fallback;
   final VoidCallback onContinue;
   final VoidCallback onClear;
@@ -2177,23 +2185,28 @@ class _RoutePreviewPanel extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.alt_route, color: _kGreen, size: 18),
-                          const SizedBox(width: 6),
-                          Text(
-                            '${distanceKm.toStringAsFixed(1)} km',
-                            style: GoogleFonts.barlowCondensed(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              height: 1,
-                              color: _kGreen,
-                            ),
-                          ),
-                        ],
+                      Text(
+                        'COSTO STIMATO',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.8,
+                          color: _kDim,
+                        ),
                       ),
                       Text(
-                        '~$mins min${fallback ? ' (stima)' : ''}',
+                        '€${estimatedCost.toStringAsFixed(2)}',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                          height: 1,
+                          color: _kGreen,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${distanceKm.toStringAsFixed(1)} km · ~$mins min'
+                        '${fallback ? ' ca.' : ''}',
                         style: GoogleFonts.barlow(fontSize: 12, color: _kDim),
                       ),
                     ],

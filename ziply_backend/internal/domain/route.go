@@ -10,5 +10,6 @@ type RouteResult struct {
 	Geometry        json.RawMessage
 	DistanceMeters  float64
 	DurationSeconds float64
+	EstimatedCost   float64 // UT.03 — stima costo: durata (min) × tariffa al minuto
 	Fallback        bool
 }

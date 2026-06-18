@@ -50,17 +50,24 @@ func (uc *RouteUsecase) Compute(ctx context.Context, vehicleID string, destLat, 
 	from := ors.Point{Lon: v.Longitude, Lat: v.Latitude}
 	to := ors.Point{Lon: destLng, Lat: destLat}
 
+	var result *domain.RouteResult
 	route, err := uc.ors.Directions(ctx, ors.ProfileFor(v.Type), from, to, uc.avoidPolygons(ctx))
 	if err != nil {
 		// ORS non disponibile (chiave assente, timeout, ...): linea diretta.
-		return straightLine(from, to), nil
+		result = straightLine(from, to)
+	} else {
+		result = &domain.RouteResult{
+			Geometry:        route.Geometry,
+			DistanceMeters:  route.DistanceMeters,
+			DurationSeconds: route.DurationSeconds,
+			Fallback:        false,
+		}
 	}
-	return &domain.RouteResult{
-		Geometry:        route.Geometry,
-		DistanceMeters:  route.DistanceMeters,
-		DurationSeconds: route.DurationSeconds,
-		Fallback:        false,
-	}, nil
+
+	// UT.03 — Stima costo: durata stimata (in minuti) × tariffa al minuto del
+	// mezzo selezionato. Vale sia per il percorso ORS sia per il fallback.
+	result.EstimatedCost = (result.DurationSeconds / 60) * v.TariffaAlMinuto
+	return result, nil
 }
 
 // avoidPolygons fonde le zone vietate attive in un'unica geometria MultiPolygon

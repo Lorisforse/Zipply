@@ -14,12 +14,16 @@ class RouteResult {
     required this.points,
     required this.distanceKm,
     required this.durationMinutes,
+    required this.estimatedCost,
     required this.fallback,
   });
 
   final List<LatLng> points;
   final double distanceKm;
   final double durationMinutes;
+
+  /// UT.03 — stima costo (€) del tragitto per il mezzo selezionato.
+  final double estimatedCost;
 
   /// true quando il backend ha usato una linea diretta perché OpenRouteService
   /// non era disponibile.
@@ -91,6 +95,7 @@ class RouteService {
       points: points,
       distanceKm: (body['distance_km'] as num?)?.toDouble() ?? 0,
       durationMinutes: (body['duration_minutes'] as num?)?.toDouble() ?? 0,
+      estimatedCost: (body['estimated_cost'] as num?)?.toDouble() ?? 0,
       fallback: body['fallback'] as bool? ?? false,
     );
   }
