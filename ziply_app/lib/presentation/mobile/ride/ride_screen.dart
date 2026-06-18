@@ -20,13 +20,13 @@ import 'package:ziply_app/services/api_exceptions.dart';
 import 'package:ziply_app/services/ride_service.dart';
 
 // ── Palette (da Grafica/noleggio-attivo-handoff) ───────────────────────────
-const Color _kBg       = Color(0xFF1A1A1A);
-const Color _kSurface  = Color(0xFF252525);
+const Color _kBg = Color(0xFF1A1A1A);
+const Color _kSurface = Color(0xFF252525);
 const Color _kSurface2 = Color(0xFF2D2D2D);
-const Color _kBorder   = Color(0xFF333333);
-const Color _kText     = Color(0xFFF5F5F5);
-const Color _kDim      = Color(0xFF777777);
-const Color _kAccent   = Color(0xFFF69659);
+const Color _kBorder = Color(0xFF333333);
+const Color _kText = Color(0xFFF5F5F5);
+const Color _kDim = Color(0xFF777777);
+const Color _kAccent = Color(0xFFF69659);
 
 const double _kZoom = 16;
 
@@ -46,7 +46,8 @@ class RideScreen extends StatelessWidget {
     required VehicleModel vehicle,
   }) {
     return Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => RideScreen(ride: ride, vehicle: vehicle)),
+      MaterialPageRoute(
+          builder: (_) => RideScreen(ride: ride, vehicle: vehicle)),
     );
   }
 
@@ -116,7 +117,7 @@ class RideScreen extends StatelessWidget {
   }
 }
 
-// ── Banner noleggio in corso (timer + costo live) ──────────────────────────
+// ── Banner noleggio in corso (timer + costo live) ─────────────────────────
 class _ActiveRentalBanner extends StatefulWidget {
   const _ActiveRentalBanner({required this.ride, required this.vehicle});
 
@@ -178,7 +179,8 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
     return h > 0 ? '$h:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
   }
 
-  String _euro(double value) => '€ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
+  String _euro(double value) =>
+      '€ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
 
   /// Termina il noleggio: chiude la corsa lato backend (così il mezzo torna
   /// disponibile) e mostra il riepilogo di fine corsa (UT.04) con durata e
