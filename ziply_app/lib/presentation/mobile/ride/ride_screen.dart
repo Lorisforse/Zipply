@@ -459,7 +459,7 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
               Row(
                 children: [
                   Expanded(
-                    flex: 1,
+                    flex: 2,
                     child: SizedBox(
                       height: 52,
                       child: OutlinedButton.icon(
@@ -480,13 +480,16 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                                 size: 20,
                                 color: _kAccent,
                               ),
-                        label: Text(
-                          _currentStatus == 'paused' ? 'RIPRENDI' : 'PAUSA',
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1,
-                            color: _kAccent,
+                        label: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            _currentStatus == 'paused' ? 'RIPRENDI' : 'PAUSA',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1,
+                              color: _kAccent,
+                            ),
                           ),
                         ),
                         style: OutlinedButton.styleFrom(
@@ -494,13 +497,14 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(4),
                           ),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
                         ),
                       ),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    flex: 2,
+                    flex: 3,
                     child: SizedBox(
                       height: 52,
                       child: ElevatedButton.icon(
@@ -515,13 +519,16 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                                 ),
                               )
                             : const Icon(Icons.stop_rounded, size: 20, color: _kBg),
-                        label: Text(
-                          _ending ? 'TERMINO…' : 'TERMINA NOLEGGIO',
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1,
-                            color: _kBg,
+                        label: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            _ending ? 'TERMINO…' : 'TERMINA NOLEGGIO',
+                            style: GoogleFonts.barlowCondensed(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1,
+                              color: _kBg,
+                            ),
                           ),
                         ),
                         style: ElevatedButton.styleFrom(
@@ -532,6 +539,7 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(4),
                           ),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
                         ),
                       ),
                     ),
