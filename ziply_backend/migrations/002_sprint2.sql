@@ -137,3 +137,15 @@ END $$;
 
 ALTER TABLE rides ADD CONSTRAINT status_valido
     CHECK (status IN ('attiva','paused','completata'));
+
+-- ---------- SEED CODICI SCONTO (UT.09) ----------
+-- Codici di esempio per la demo e i test. Idempotente: ON CONFLICT sul codice
+-- evita duplicati alle riesecuzioni. Include un codice scaduto e uno esaurito
+-- per verificare i casi non validi.
+INSERT INTO discount_codes (code, percentage, valid_from, valid_until, is_active, max_uses, used_count)
+VALUES
+    ('ZIPLY10',     10.00, NOW() - INTERVAL '1 day',    NOW() + INTERVAL '1 year',  TRUE, 1000, 0),
+    ('BENVENUTO20', 20.00, NOW() - INTERVAL '1 day',    NOW() + INTERVAL '1 year',  TRUE, 1000, 0),
+    ('SCADUTO5',     5.00, NOW() - INTERVAL '2 months', NOW() - INTERVAL '1 month', TRUE, 1000, 0),
+    ('ESAURITO15',  15.00, NOW() - INTERVAL '1 day',    NOW() + INTERVAL '1 year',  TRUE, 1,    1)
+ON CONFLICT (code) DO NOTHING;

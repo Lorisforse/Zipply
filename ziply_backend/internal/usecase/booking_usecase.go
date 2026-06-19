@@ -13,7 +13,7 @@ const expiryJobTimeout = 10 * time.Second
 
 // BookingRepository abstracts the persistence of bookings required by the reservation flow.
 type BookingRepository interface {
-	Create(ctx context.Context, userID, vehicleID string, expiresAt time.Time) (*domain.Booking, error)
+	Create(ctx context.Context, userID, vehicleID, discountCode string, expiresAt time.Time) (*domain.Booking, error)
 	Expire(ctx context.Context, bookingID, vehicleID string) error
 	Cancel(ctx context.Context, bookingID, userID string) error
 }
@@ -29,11 +29,13 @@ func NewBookingUsecase(bookings BookingRepository) *BookingUsecase {
 }
 
 // Create reserves the vehicle for the user with a 15-minute hold and schedules
-// the automatic expiry of the booking once the hold elapses.
-func (uc *BookingUsecase) Create(ctx context.Context, userID, vehicleID string) (*domain.Booking, error) {
+// the automatic expiry of the booking once the hold elapses. discountCode è
+// opzionale (UT.09): se valorizzato viene validato e collegato alla
+// prenotazione perché lo sconto si applichi al costo a fine corsa.
+func (uc *BookingUsecase) Create(ctx context.Context, userID, vehicleID, discountCode string) (*domain.Booking, error) {
 	expiresAt := time.Now().Add(domain.BookingHoldDuration)
 
-	booking, err := uc.bookings.Create(ctx, userID, vehicleID, expiresAt)
+	booking, err := uc.bookings.Create(ctx, userID, vehicleID, discountCode, expiresAt)
 	if err != nil {
 		return nil, err
 	}

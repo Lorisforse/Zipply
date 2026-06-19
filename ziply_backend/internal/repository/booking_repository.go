@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -26,7 +27,12 @@ func NewBookingRepository(pool *pgxpool.Pool) *BookingRepository {
 // user already holds an active booking, inserts the booking and marks the
 // vehicle 'prenotato'. Returns domain.ErrVehicleNotAvailable or
 // domain.ErrActiveBookingExists when the preconditions are not met.
-func (r *BookingRepository) Create(ctx context.Context, userID, vehicleID string, expiresAt time.Time) (*domain.Booking, error) {
+//
+// UT.09 — discountCode è opzionale: se valorizzato viene validato (esistenza,
+// validità, utilizzi residui) e collegato alla prenotazione (discount_code_id),
+// così lo sconto sarà applicato al costo a fine corsa. Un codice non valido fa
+// fallire la prenotazione con domain.ErrDiscountNotFound / ErrDiscountNotValid.
+func (r *BookingRepository) Create(ctx context.Context, userID, vehicleID, discountCode string, expiresAt time.Time) (*domain.Booking, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -62,13 +68,23 @@ func (r *BookingRepository) Create(ctx context.Context, userID, vehicleID string
 		return nil, domain.ErrActiveBookingExists
 	}
 
+	// UT.09 — risolve l'eventuale codice sconto e lo collega alla prenotazione.
+	var discountID *string
+	if strings.TrimSpace(discountCode) != "" {
+		id, err := resolveDiscount(ctx, tx, discountCode)
+		if err != nil {
+			return nil, err
+		}
+		discountID = &id
+	}
+
 	// Insert the booking.
 	b := &domain.Booking{UserID: userID, VehicleID: vehicleID}
 	err = tx.QueryRow(ctx,
-		`INSERT INTO bookings (user_id, vehicle_id, expires_at, status)
-		 VALUES ($1, $2, $3, 'attiva')
+		`INSERT INTO bookings (user_id, vehicle_id, expires_at, status, discount_code_id)
+		 VALUES ($1, $2, $3, 'attiva', $4)
 		 RETURNING id, created_at, expires_at, status`,
-		userID, vehicleID, expiresAt,
+		userID, vehicleID, expiresAt, discountID,
 	).Scan(&b.ID, &b.CreatedAt, &b.ExpiresAt, &b.Status)
 	if err != nil {
 		return nil, err

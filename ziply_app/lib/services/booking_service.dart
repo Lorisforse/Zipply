@@ -21,11 +21,21 @@ class BookingService {
   static const Duration _timeout = Duration(seconds: 10);
 
   /// Crea una prenotazione per [vehicleId] (POST /bookings).
+  /// [discountCode] è opzionale (UT.09): se valorizzato viene inviato al backend
+  /// che lo collega alla prenotazione per applicarlo al costo a fine corsa.
   /// In caso di errore lancia una Exception con un messaggio pronto per la UI;
   /// per il 409 viene propagato il messaggio del backend ("mezzo non
-  /// disponibile" / "hai già una prenotazione attiva").
-  Future<BookingModel> createBooking(String vehicleId) async {
+  /// disponibile" / "hai già una prenotazione attiva"), per il 422 quello sul
+  /// codice sconto non valido.
+  Future<BookingModel> createBooking(String vehicleId,
+      {String? discountCode}) async {
     final token = await _storage.read(key: kTokenKey);
+
+    final payload = <String, dynamic>{'vehicle_id': vehicleId};
+    final code = discountCode?.trim();
+    if (code != null && code.isNotEmpty) {
+      payload['discount_code'] = code;
+    }
 
     final http.Response response;
     try {
@@ -36,7 +46,7 @@ class BookingService {
               'Content-Type': 'application/json',
               if (token != null) 'Authorization': 'Bearer $token',
             },
-            body: jsonEncode({'vehicle_id': vehicleId}),
+            body: jsonEncode(payload),
           )
           .timeout(_timeout);
     } on http.ClientException {
@@ -112,6 +122,11 @@ class BookingService {
         return serverMessage is String && serverMessage.isNotEmpty
             ? serverMessage
             : 'Mezzo non più disponibile';
+      case 422:
+        // UT.09 — codice sconto inesistente o non più valido.
+        return serverMessage is String && serverMessage.isNotEmpty
+            ? serverMessage
+            : 'Codice sconto non valido';
       case 401:
         return 'Sessione scaduta, effettua di nuovo l\'accesso';
       default:

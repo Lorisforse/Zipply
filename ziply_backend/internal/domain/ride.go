@@ -39,10 +39,13 @@ const avgUrbanSpeedKmh = 15.0
 const freeRideThresholdSeconds = 20
 
 // RideSummary raccoglie i valori di addebito calcolati al termine di una corsa.
+// TotalCost è già al netto dell'eventuale sconto; AppliedDiscount è l'importo
+// scontato (0 se nessuno sconto, UT.09).
 type RideSummary struct {
 	DurationMinutes int
 	TotalCost       float64
 	Co2SavedGrams   float64
+	AppliedDiscount float64
 }
 
 // ChargedMinutes applica la regola di addebito a scatti di minuto: nessun

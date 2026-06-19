@@ -49,6 +49,11 @@ func main() {
 	rideUsecase := usecase.NewRideUsecase(rideRepo)
 	rideHandler := handler.NewRideHandler(rideUsecase)
 
+	// UT.09 — Validazione codici sconto inseriti in conferma prenotazione.
+	discountRepo := repository.NewDiscountRepository(pool)
+	discountUsecase := usecase.NewDiscountUsecase(discountRepo)
+	discountHandler := handler.NewDiscountHandler(discountUsecase)
+
 	// UT.07/03/08 — Percorso mezzo→destinazione via OpenRouteService, con stima
 	// costo e suggerimento tipologia inclusi nella risposta.
 	routeUsecase := usecase.NewRouteUsecase(vehicleRepo, forbiddenZoneRepo, ors.New())
@@ -64,6 +69,7 @@ func main() {
 	// Authenticated routes (JWT Bearer).
 	mux.Handle("GET /vehicles", middleware.JWTAuth(http.HandlerFunc(vehicleHandler.List)))
 	mux.Handle("POST /routes", middleware.JWTAuth(http.HandlerFunc(routeHandler.Compute)))
+	mux.Handle("POST /discount-codes/validate", middleware.JWTAuth(http.HandlerFunc(discountHandler.Validate)))
 	mux.Handle("POST /bookings", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Create)))
 	mux.Handle("POST /bookings/{id}/cancel", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Cancel)))
 	mux.Handle("POST /rides/unlock", middleware.JWTAuth(http.HandlerFunc(rideHandler.Unlock)))

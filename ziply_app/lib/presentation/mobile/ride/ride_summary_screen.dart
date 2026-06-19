@@ -53,6 +53,7 @@ class RideSummaryScreen extends StatefulWidget {
     required this.vehicle,
     required this.duration,
     required this.cost,
+    this.appliedDiscount = 0,
   });
 
   final RideModel ride;
@@ -61,9 +62,12 @@ class RideSummaryScreen extends StatefulWidget {
   /// Durata effettiva della corsa (congelata al momento del termine).
   final Duration duration;
 
-  /// Costo addebitato (congelato al momento del termine), nella stessa logica
-  /// di addebito a scatti di minuto della schermata di noleggio attivo.
+  /// Costo addebitato server-autoritativo, già al netto dell'eventuale sconto.
   final double cost;
+
+  /// UT.09 — importo scontato applicato (0 se nessuno sconto). Quando > 0 il
+  /// riepilogo mostra il subtotale e la riga sconto.
+  final double appliedDiscount;
 
   /// Apre la schermata sostituendo la rotta corrente: dopo aver terminato non
   /// si torna alla schermata di noleggio (ormai conclusa). Entra con una
@@ -75,6 +79,7 @@ class RideSummaryScreen extends StatefulWidget {
     required VehicleModel vehicle,
     required Duration duration,
     required double cost,
+    double appliedDiscount = 0,
   }) {
     return Navigator.of(context).pushReplacement(
       PageRouteBuilder(
@@ -85,6 +90,7 @@ class RideSummaryScreen extends StatefulWidget {
           vehicle: vehicle,
           duration: duration,
           cost: cost,
+          appliedDiscount: appliedDiscount,
         ),
         transitionsBuilder: (context, animation, _, child) {
           final curved =
@@ -202,6 +208,7 @@ class _RideSummaryScreenState extends State<RideSummaryScreen> {
                       vehicle: widget.vehicle,
                       duration: widget.duration,
                       cost: widget.cost,
+                      appliedDiscount: widget.appliedDiscount,
                       cardLastFour: _cardLastFour,
                     ),
                     const SizedBox(height: 24),
@@ -302,6 +309,7 @@ class _SummaryCard extends StatelessWidget {
     required this.vehicle,
     required this.duration,
     required this.cost,
+    required this.appliedDiscount,
     required this.cardLastFour,
   });
 
@@ -309,6 +317,7 @@ class _SummaryCard extends StatelessWidget {
   final VehicleModel vehicle;
   final Duration duration;
   final double cost;
+  final double appliedDiscount;
   final String? cardLastFour;
 
   String _shortCode() {
@@ -392,6 +401,17 @@ class _SummaryCard extends StatelessWidget {
           const SizedBox(height: 14),
           Container(height: 1, color: _kBorder),
           const SizedBox(height: 14),
+          // UT.09 — con uno sconto applicato mostra subtotale e riga sconto.
+          if (appliedDiscount > 0) ...[
+            _DetailRow(label: 'Subtotale', value: _euro(cost + appliedDiscount)),
+            const SizedBox(height: 10),
+            _DetailRow(
+              label: 'Sconto',
+              value: '− ${_euro(appliedDiscount)}',
+              valueColor: _kGreen,
+            ),
+            const SizedBox(height: 10),
+          ],
           _DetailRow(
             label: 'Costo totale',
             value: _euro(cost),

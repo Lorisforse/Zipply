@@ -23,8 +23,11 @@ func NewBookingHandler(bookings *usecase.BookingUsecase) *BookingHandler {
 }
 
 // createBookingRequest mirrors the JSON body of POST /bookings.
+// discount_code è opzionale (UT.09): se presente lo sconto viene collegato alla
+// prenotazione e applicato al costo a fine corsa.
 type createBookingRequest struct {
-	VehicleID string `json:"vehicle_id"`
+	VehicleID    string `json:"vehicle_id"`
+	DiscountCode string `json:"discount_code"`
 }
 
 // bookingResponse is the JSON shape of a created booking.
@@ -53,13 +56,17 @@ func (h *BookingHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	booking, err := h.bookings.Create(r.Context(), userID, req.VehicleID)
+	booking, err := h.bookings.Create(r.Context(), userID, req.VehicleID, req.DiscountCode)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrVehicleNotAvailable):
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "mezzo non disponibile"})
 		case errors.Is(err, domain.ErrActiveBookingExists):
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "hai già una prenotazione attiva"})
+		case errors.Is(err, domain.ErrDiscountNotFound):
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "codice sconto inesistente"})
+		case errors.Is(err, domain.ErrDiscountNotValid):
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "codice sconto scaduto o non più valido"})
 		default:
 			log.Printf("[BOOKINGS] create failed: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})

@@ -23,3 +23,32 @@ class RideModel {
     );
   }
 }
+
+/// Riepilogo server-autoritativo restituito da POST /rides/{id}/end: durata,
+/// costo (già al netto dello sconto), CO2 risparmiata e importo scontato (UT.09).
+class RideEndSummary {
+  const RideEndSummary({
+    required this.durationMinutes,
+    required this.totalCost,
+    required this.co2SavedGrams,
+    required this.appliedDiscount,
+  });
+
+  final int durationMinutes;
+
+  /// Costo addebitato, già al netto dell'eventuale sconto.
+  final double totalCost;
+  final double co2SavedGrams;
+
+  /// Importo scontato (0 se nessuno sconto). Costo lordo = totalCost + questo.
+  final double appliedDiscount;
+
+  factory RideEndSummary.fromJson(Map<String, dynamic> json) {
+    return RideEndSummary(
+      durationMinutes: (json['duration_minutes'] as num?)?.toInt() ?? 0,
+      totalCost: (json['total_cost'] as num?)?.toDouble() ?? 0,
+      co2SavedGrams: (json['co2_saved'] as num?)?.toDouble() ?? 0,
+      appliedDiscount: (json['applied_discount'] as num?)?.toDouble() ?? 0,
+    );
+  }
+}

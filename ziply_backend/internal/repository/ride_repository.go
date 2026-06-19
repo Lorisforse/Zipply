@@ -135,23 +135,29 @@ func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domai
 	defer tx.Rollback(ctx)
 
 	// Blocca la corsa e leggi inizio, tariffa e CO2/km della tipologia,
-	// verificando che sia dell'utente e ancora attiva.
+	// verificando che sia dell'utente e ancora attiva. Recupera anche
+	// l'eventuale codice sconto collegato alla prenotazione (UT.09).
 	var (
-		vehicleID  string
-		startedAt  time.Time
-		ratePerMin float64
-		co2PerKm   float64
+		vehicleID   string
+		startedAt   time.Time
+		ratePerMin  float64
+		co2PerKm    float64
+		discountID  *string
+		discountPct *float64
 	)
 	err = tx.QueryRow(ctx,
 		`SELECT r.vehicle_id, r.started_at,
-		        vt.tariffa_al_minuto::float8, vt.co2_risparmiata_per_km::float8
+		        vt.tariffa_al_minuto::float8, vt.co2_risparmiata_per_km::float8,
+		        dc.id, dc.percentage::float8
 		   FROM rides r
 		   JOIN vehicles v       ON v.id = r.vehicle_id
 		   JOIN vehicle_types vt ON vt.id = v.type_id
+		   LEFT JOIN bookings b       ON b.id = r.booking_id
+		   LEFT JOIN discount_codes dc ON dc.id = b.discount_code_id
 		  WHERE r.id = $1 AND r.user_id = $2 AND r.status = 'attiva'
 		  FOR UPDATE OF r`,
 		rideID, userID,
-	).Scan(&vehicleID, &startedAt, &ratePerMin, &co2PerKm)
+	).Scan(&vehicleID, &startedAt, &ratePerMin, &co2PerKm, &discountID, &discountPct)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrRideNotFound
 	}
@@ -162,17 +168,37 @@ func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domai
 	endedAt := time.Now()
 	elapsed := endedAt.Sub(startedAt)
 	minutes := domain.ChargedMinutes(elapsed)
-	cost := math.Round(float64(minutes)*ratePerMin*100) / 100
+	gross := math.Round(float64(minutes)*ratePerMin*100) / 100
 	co2 := math.Round(domain.EstimateCo2SavedGrams(elapsed, co2PerKm))
+
+	// UT.09 — applica l'eventuale sconto collegato alla prenotazione: il costo
+	// persistito è già al netto e applied_discount registra l'importo scontato.
+	cost := gross
+	var appliedDiscount float64
+	if discountPct != nil {
+		cost, appliedDiscount = domain.ApplyDiscount(gross, *discountPct)
+	}
 
 	if _, err := tx.Exec(ctx,
 		`UPDATE rides
 		    SET status = 'completata', ended_at = $2,
-		        duration_minutes = $3, total_cost = $4, co2_saved = $5
+		        duration_minutes = $3, total_cost = $4, co2_saved = $5,
+		        applied_discount = $6
 		  WHERE id = $1`,
-		rideID, endedAt, minutes, cost, co2,
+		rideID, endedAt, minutes, cost, co2, appliedDiscount,
 	); err != nil {
 		return nil, err
+	}
+
+	// Registra l'utilizzo del codice solo se lo sconto è stato effettivamente
+	// applicato (corsa a pagamento con un codice valido collegato).
+	if discountID != nil && appliedDiscount > 0 {
+		if _, err := tx.Exec(ctx,
+			`UPDATE discount_codes SET used_count = used_count + 1 WHERE id = $1`,
+			*discountID,
+		); err != nil {
+			return nil, err
+		}
 	}
 
 	if _, err := tx.Exec(ctx,
@@ -189,5 +215,6 @@ func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domai
 		DurationMinutes: minutes,
 		TotalCost:       cost,
 		Co2SavedGrams:   co2,
+		AppliedDiscount: appliedDiscount,
 	}, nil
 }

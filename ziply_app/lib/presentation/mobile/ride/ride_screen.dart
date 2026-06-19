@@ -183,30 +183,31 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
       '€ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
 
   /// Termina il noleggio: chiude la corsa lato backend (così il mezzo torna
-  /// disponibile) e mostra il riepilogo di fine corsa (UT.04) con durata e
-  /// costo congelati al momento del termine. In caso di errore resta sulla
+  /// disponibile) e mostra il riepilogo di fine corsa (UT.04). Durata e costo
+  /// sono quelli server-autoritativi restituiti da /end (il costo è già al
+  /// netto dell'eventuale sconto, UT.09); la durata congelata dal banner è il
+  /// fallback se la risposta non la riporta. In caso di errore resta sulla
   /// schermata mostrando il messaggio.
   Future<void> _onEndRide() async {
     if (_ending) return;
-    // Congela durata e costo come mostrati nel banner al momento del termine:
-    // l'endpoint /end restituisce solo lo stato, quindi il riepilogo riusa i
-    // valori già calcolati qui.
-    final duration = Duration(seconds: _elapsedSeconds);
-    final cost = _cost;
+    // Durata congelata come mostrata nel banner: usata come fallback e per la
+    // precisione al secondo (la risposta riporta i minuti addebitati).
+    final frozenDuration = Duration(seconds: _elapsedSeconds);
     zlog('Termino il noleggio ${widget.ride.id}', tag: 'Noleggio');
     setState(() => _ending = true);
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await _rideService.endRide(widget.ride.id);
+      final summary = await _rideService.endRide(widget.ride.id);
       if (!mounted) return;
       zlog('Noleggio terminato: mostro il riepilogo', tag: 'Noleggio');
       await RideSummaryScreen.show(
         navigator.context,
         ride: widget.ride,
         vehicle: widget.vehicle,
-        duration: duration,
-        cost: cost,
+        duration: frozenDuration,
+        cost: summary.totalCost,
+        appliedDiscount: summary.appliedDiscount,
       );
     } on SessionExpiredException catch (e) {
       if (!mounted) return;
