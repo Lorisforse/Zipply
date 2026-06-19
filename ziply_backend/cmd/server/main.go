@@ -49,13 +49,10 @@ func main() {
 	rideUsecase := usecase.NewRideUsecase(rideRepo)
 	rideHandler := handler.NewRideHandler(rideUsecase)
 
-	// UT.07 — Calcolo percorso mezzo→destinazione via OpenRouteService.
+	// UT.07/03/08 — Percorso mezzo→destinazione via OpenRouteService, con stima
+	// costo e suggerimento tipologia inclusi nella risposta.
 	routeUsecase := usecase.NewRouteUsecase(vehicleRepo, forbiddenZoneRepo, ors.New())
 	routeHandler := handler.NewRouteHandler(routeUsecase)
-
-	// UT.08 — Suggerimento tipologia mezzo per il tragitto.
-	suggestionUsecase := usecase.NewSuggestionUsecase()
-	suggestionHandler := handler.NewSuggestionHandler(suggestionUsecase)
 
 	mux := http.NewServeMux()
 
@@ -67,7 +64,6 @@ func main() {
 	// Authenticated routes (JWT Bearer).
 	mux.Handle("GET /vehicles", middleware.JWTAuth(http.HandlerFunc(vehicleHandler.List)))
 	mux.Handle("POST /routes", middleware.JWTAuth(http.HandlerFunc(routeHandler.Compute)))
-	mux.Handle("POST /suggest-vehicle", middleware.JWTAuth(http.HandlerFunc(suggestionHandler.Suggest)))
 	mux.Handle("POST /bookings", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Create)))
 	mux.Handle("POST /bookings/{id}/cancel", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Cancel)))
 	mux.Handle("POST /rides/unlock", middleware.JWTAuth(http.HandlerFunc(rideHandler.Unlock)))

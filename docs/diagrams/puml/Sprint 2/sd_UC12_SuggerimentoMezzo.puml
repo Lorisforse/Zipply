@@ -8,18 +8,20 @@ skinparam hyperlinkUnderline false
 actor ":Utente" as Utente
 participant ":App Flutter" as App
 participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
 
 Utente -> App : inserisce la destinazione\n(con un mezzo selezionato)
 
-App -> Backend : POST /suggest-vehicle\n{ from_lat, from_lng, dest_lat, dest_lng }
+App -> Backend : POST /routes\n{ vehicle_id, dest_lat, dest_lng }
 
-Backend -> Backend : calcolaDistanza(\n  haversine: mezzo -> destinazione)
+Backend -> DB : findVehicleConTipo(vehicle_id)
+DB --> Backend : mezzo (posizione, tipo, tariffa)
 
-alt ~[distanza >= soglia (~3 km)~]
-    Backend --> App : 200 OK\n{ suggested_type: "auto" }
-else ~[distanza < soglia~]
-    Backend --> App : 200 OK\n{ suggested_type: "bici_scooter" }
-end
+Backend -> Backend : calcola percorso e distanza (UC-10)
+
+Backend -> Backend : suggerimento =\n  distanza >= soglia (~3 km) ? "auto" : "bici_scooter"
+
+Backend --> App : 200 OK\n{ geometry, distance_km, duration_minutes,\n  estimated_cost, suggested_type }
 
 App --> Utente : mostra il consiglio nel pannello\n(conferma se il mezzo scelto coincide,\n altrimenti suggerisce l'alternativa)
 

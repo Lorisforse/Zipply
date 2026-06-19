@@ -15,6 +15,7 @@ class RouteResult {
     required this.distanceKm,
     required this.durationMinutes,
     required this.estimatedCost,
+    required this.suggestion,
     required this.fallback,
   });
 
@@ -25,21 +26,18 @@ class RouteResult {
   /// UT.03 — stima costo (€) del tragitto per il mezzo selezionato.
   final double estimatedCost;
 
+  /// UT.08 — tipologia consigliata per il tragitto, calcolata dal backend in
+  /// base alla distanza del percorso.
+  final SuggestedCategory suggestion;
+
   /// true quando il backend ha usato una linea diretta perché OpenRouteService
   /// non era disponibile.
   final bool fallback;
 }
 
-/// UT.08 — categoria di mezzo consigliata per il tragitto.
+/// UT.08 — categoria di mezzo consigliata per il tragitto, inclusa nella
+/// risposta del calcolo percorso (POST /routes).
 enum SuggestedCategory { auto, biciScooter, unknown }
-
-/// Suggerimento di tipologia mezzo restituito da POST /suggest-vehicle (UT.08).
-class VehicleSuggestion {
-  const VehicleSuggestion({required this.category, required this.distanceKm});
-
-  final SuggestedCategory category;
-  final double distanceKm;
-}
 
 /// Calcolo del percorso mezzo→destinazione tramite il backend (POST /routes),
 /// che a sua volta interroga OpenRouteService. Allinea le convenzioni degli
@@ -102,62 +100,20 @@ class RouteService {
       );
     }
 
+    final st = body['suggested_type'] as String?;
+    final suggestion = switch (st) {
+      'auto' => SuggestedCategory.auto,
+      'bici_scooter' => SuggestedCategory.biciScooter,
+      _ => SuggestedCategory.unknown,
+    };
+
     return RouteResult(
       points: points,
       distanceKm: (body['distance_km'] as num?)?.toDouble() ?? 0,
       durationMinutes: (body['duration_minutes'] as num?)?.toDouble() ?? 0,
       estimatedCost: (body['estimated_cost'] as num?)?.toDouble() ?? 0,
+      suggestion: suggestion,
       fallback: body['fallback'] as bool? ?? false,
-    );
-  }
-
-  /// UT.08 — Consiglia la tipologia di mezzo per il tragitto da [from] a
-  /// [destination] (POST /suggest-vehicle).
-  Future<VehicleSuggestion> suggestVehicle({
-    required LatLng from,
-    required LatLng destination,
-  }) async {
-    final token = await _storage.read(key: kTokenKey);
-
-    final http.Response response;
-    try {
-      response = await _client
-          .post(
-            Uri.parse('$kBaseUrl/suggest-vehicle'),
-            headers: {
-              'Content-Type': 'application/json',
-              if (token != null) 'Authorization': 'Bearer $token',
-            },
-            body: jsonEncode({
-              'from_lat': from.latitude,
-              'from_lng': from.longitude,
-              'dest_lat': destination.latitude,
-              'dest_lng': destination.longitude,
-            }),
-          )
-          .timeout(_timeout);
-    } on http.ClientException {
-      throw Exception('Impossibile connettersi al server');
-    } on TimeoutException {
-      throw Exception('Impossibile connettersi al server');
-    }
-
-    if (response.statusCode == 401) throw const SessionExpiredException();
-    if (response.statusCode != 200) {
-      throw Exception('Impossibile ottenere il suggerimento');
-    }
-
-    final body =
-        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-    final t = body['suggested_type'] as String?;
-    final category = switch (t) {
-      'auto' => SuggestedCategory.auto,
-      'bici_scooter' => SuggestedCategory.biciScooter,
-      _ => SuggestedCategory.unknown,
-    };
-    return VehicleSuggestion(
-      category: category,
-      distanceKm: (body['distance_km'] as num?)?.toDouble() ?? 0,
     );
   }
 }

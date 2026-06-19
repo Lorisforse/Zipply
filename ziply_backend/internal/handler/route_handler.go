@@ -39,6 +39,7 @@ type routeResponse struct {
 	DistanceKm      float64         `json:"distance_km"`
 	DurationMinutes float64         `json:"duration_minutes"`
 	EstimatedCost   float64         `json:"estimated_cost"`
+	SuggestedType   string          `json:"suggested_type"`
 	Fallback        bool            `json:"fallback"`
 }
 
@@ -68,6 +69,7 @@ func (h *RouteHandler) Compute(w http.ResponseWriter, r *http.Request) {
 		DistanceKm:      res.DistanceMeters / metersPerKm,
 		DurationMinutes: res.DurationSeconds / secondsPerMinute,
 		EstimatedCost:   res.EstimatedCost,
+		SuggestedType:   res.SuggestedType,
 		Fallback:        res.Fallback,
 	})
 }

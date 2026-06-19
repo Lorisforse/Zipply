@@ -513,21 +513,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     });
   }
 
-  /// UT.08 — Carica (best-effort) la tipologia consigliata per il tragitto. Un
-  /// errore non viene mostrato: il consiglio semplicemente non compare.
-  Future<void> _loadSuggestion(VehicleModel vehicle, LatLng dest) async {
-    try {
-      final s = await _routeService.suggestVehicle(
-        from: LatLng(vehicle.latitude, vehicle.longitude),
-        destination: dest,
-      );
-      if (!mounted) return;
-      setState(() => _suggestion = s.category);
-    } on Exception {
-      // best-effort: nessun consiglio mostrato
-    }
-  }
-
   /// UT.07 — Calcola e disegna il percorso dal [vehicle] alla destinazione
   /// impostata, mostrando distanza e durata. Errore → snackbar non bloccante.
   Future<void> _computeRouteFor(VehicleModel vehicle) async {
@@ -550,9 +535,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _routeDurationMin = route.durationMinutes;
         _routeCost = route.estimatedCost;
         _routeFallback = route.fallback;
+        _suggestion = route.suggestion;
         _routing = false;
       });
-      await _loadSuggestion(vehicle, dest);
     } on SessionExpiredException {
       if (mounted) setState(() => _routing = false);
       await _handleSessionExpired();

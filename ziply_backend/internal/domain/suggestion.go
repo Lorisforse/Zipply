@@ -1,14 +1,8 @@
 package domain
 
-// Tipologie suggerite da UT.08 in base al tragitto verso la destinazione.
+// Tipologie suggerite da UT.08 in base alla distanza del tragitto. Il
+// suggerimento è incluso nella risposta del calcolo percorso (vedi RouteResult).
 const (
 	SuggestionCar   = "auto"         // percorsi lunghi: si consiglia l'auto
 	SuggestionLight = "bici_scooter" // percorsi brevi: bici o monopattino
 )
-
-// VehicleSuggestion è il suggerimento di tipologia di mezzo per un tragitto
-// (UT.08): la categoria consigliata e la distanza su cui si basa il consiglio.
-type VehicleSuggestion struct {
-	Type           string // SuggestionCar | SuggestionLight
-	DistanceMeters float64
-}

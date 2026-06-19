@@ -11,5 +11,6 @@ type RouteResult struct {
 	DistanceMeters  float64
 	DurationSeconds float64
 	EstimatedCost   float64 // UT.03 — stima costo: durata (min) × tariffa al minuto
+	SuggestedType   string  // UT.08 — tipologia consigliata: "auto" | "bici_scooter"
 	Fallback        bool
 }

@@ -67,8 +67,19 @@ func (uc *RouteUsecase) Compute(ctx context.Context, vehicleID string, destLat, 
 	// UT.03 — Stima costo: durata stimata (in minuti) × tariffa al minuto del
 	// mezzo selezionato. Vale sia per il percorso ORS sia per il fallback.
 	result.EstimatedCost = (result.DurationSeconds / 60) * v.TariffaAlMinuto
+
+	// UT.08 — Suggerimento tipologia in base alla distanza del percorso (la
+	// stessa mostrata all'utente): oltre la soglia auto, sotto bici/monopattino.
+	result.SuggestedType = domain.SuggestionLight
+	if result.DistanceMeters >= suggestDistanceThresholdM {
+		result.SuggestedType = domain.SuggestionCar
+	}
 	return result, nil
 }
+
+// suggestDistanceThresholdM è la soglia (in metri, sulla distanza del percorso)
+// oltre la quale si consiglia l'auto e sotto bici/monopattino (UT.08).
+const suggestDistanceThresholdM = 3000.0
 
 // avoidPolygons fonde le zone vietate attive in un'unica geometria MultiPolygon
 // GeoJSON per il parametro avoid_polygons di ORS, o nil se non ce ne sono. Le
