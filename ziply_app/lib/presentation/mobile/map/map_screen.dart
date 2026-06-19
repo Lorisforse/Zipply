@@ -809,6 +809,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     return Scaffold(
       key: _scaffoldKey,
       backgroundColor: _kBg,
+      resizeToAvoidBottomInset: false,
       endDrawer: const MenuDrawer(),
       body: SafeArea(
         child: Column(

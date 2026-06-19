@@ -40,9 +40,9 @@ func (h *DiscountHandler) Validate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrDiscountNotFound):
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "codice sconto inesistente"})
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "Codice scaduto o inesistente"})
 		case errors.Is(err, domain.ErrDiscountNotValid):
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "codice sconto scaduto o non più valido"})
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "Codice scaduto o inesistente"})
 		default:
 			log.Printf("[DISCOUNTS] validate failed: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})

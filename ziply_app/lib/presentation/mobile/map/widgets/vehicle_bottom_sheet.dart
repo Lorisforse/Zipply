@@ -80,6 +80,7 @@ class VehicleBottomSheet extends StatefulWidget {
   }) {
     return showModalBottomSheet<VehicleBookingResult>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: const Color(0x8C000000), // rgba(0,0,0,0.55)
       builder: (_) => VehicleBottomSheet(
@@ -106,6 +107,7 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
   bool _validatingDiscount = false;
   DiscountValidation? _validDiscount; // sconto verificato e applicabile
   String? _discountError; // messaggio di errore della verifica
+  bool _showDiscountInput = false; // controlla se il campo sconto a scomparsa è visibile
 
   @override
   void dispose() {
@@ -216,8 +218,10 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
     final (distValue, distSecondary) =
         walkingLabels(widget.userPosition, vehicle.latitude, vehicle.longitude);
 
-    return Container(
-      decoration: const BoxDecoration(
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
         color: _kBg,
         border: Border(top: BorderSide(color: _kBorder)),
         boxShadow: [
@@ -354,16 +358,26 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                   ),
                 ),
               ],
-              const SizedBox(height: 16),
-              // UT.09 — Codice sconto (opzionale): verificato qui e applicato al
-              // costo a fine corsa se la prenotazione viene poi utilizzata.
+              const SizedBox(height: 12),
+              // UT.09 — Codice sconto (opzionale): micro-interfaccia a scomparsa
+              // per mantenere il Bottom Sheet invasivo al minimo.
               _DiscountField(
                 controller: _discountController,
                 validating: _validatingDiscount,
                 valid: _validDiscount,
                 error: _discountError,
                 enabled: !busy,
+                showInput: _showDiscountInput,
+                onShowInput: () => setState(() => _showDiscountInput = true),
                 onVerify: _verifyDiscount,
+                onRemove: () {
+                  setState(() {
+                    _validDiscount = null;
+                    _discountError = null;
+                    _discountController.clear();
+                    _showDiscountInput = false;
+                  });
+                },
                 onChanged: () {
                   // Un nuovo testo invalida il feedback precedente.
                   if (_validDiscount != null || _discountError != null) {
@@ -374,7 +388,7 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                   }
                 },
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               // UT.02 — Prenotazione (opzionale): tiene il mezzo per te finché
               // non ci arrivi.
               SizedBox(
@@ -414,8 +428,9 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 // ── Blocco metrica: etichetta + valore + secondario ────────────────────────
@@ -462,8 +477,9 @@ class _Metric extends StatelessWidget {
 }
 
 // ── Campo codice sconto (UT.09) ────────────────────────────────────────────
-// Input del codice + pulsante "Verifica"; sotto, il feedback di validità
-// (sconto applicato) o di errore (codice inesistente/scaduto).
+// Invasivo al minimo: mostra solo un link "Aggiungi codice sconto" che,
+// quando cliccato, si espande per mostrare l'input, per poi richiudersi
+// in una singola riga di testo verde in caso di validazione positiva.
 class _DiscountField extends StatelessWidget {
   const _DiscountField({
     required this.controller,
@@ -471,7 +487,10 @@ class _DiscountField extends StatelessWidget {
     required this.valid,
     required this.error,
     required this.enabled,
+    required this.showInput,
+    required this.onShowInput,
     required this.onVerify,
+    required this.onRemove,
     required this.onChanged,
   });
 
@@ -480,7 +499,10 @@ class _DiscountField extends StatelessWidget {
   final DiscountValidation? valid;
   final String? error;
   final bool enabled;
+  final bool showInput;
+  final VoidCallback onShowInput;
   final VoidCallback onVerify;
+  final VoidCallback onRemove;
   final VoidCallback onChanged;
 
   String _formatPercent(double p) {
@@ -491,136 +513,162 @@ class _DiscountField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasValid = valid != null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'CODICE SCONTO',
-          style: GoogleFonts.barlowCondensed(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1,
-            color: _kDim,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
+
+    // 1. Stato: Codice sconto applicato con successo (Singola riga verde compatta)
+    if (hasValid) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
           children: [
-            Expanded(
-              child: TextField(
-                controller: controller,
-                enabled: enabled && !hasValid,
-                onChanged: (_) => onChanged(),
-                onSubmitted: (_) => onVerify(),
-                textCapitalization: TextCapitalization.characters,
-                textInputAction: TextInputAction.done,
-                style: GoogleFonts.barlowCondensed(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1,
-                  color: _kText,
-                ),
-                decoration: InputDecoration(
-                  isDense: true,
-                  hintText: 'es. ZIPLY10',
-                  hintStyle: GoogleFonts.barlow(fontSize: 13.5, color: _kDim),
-                  filled: true,
-                  fillColor: _kSurface,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: BorderSide(
-                      color: hasValid ? _kGreen : _kBorder,
-                    ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: const BorderSide(color: _kAccent),
-                  ),
-                  disabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: BorderSide(
-                      color: hasValid ? _kGreen : _kBorder,
-                    ),
-                  ),
-                ),
+            const Icon(Icons.check_circle, size: 15, color: _kGreen),
+            const SizedBox(width: 6),
+            Text(
+              'Sconto del ${_formatPercent(valid!.percentage)}% applicato (${valid!.code})',
+              style: GoogleFonts.barlow(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _kGreen,
               ),
             ),
-            const SizedBox(width: 8),
-            SizedBox(
-              height: 46,
-              child: hasValid
-                  ? IconButton(
-                      onPressed: enabled
-                          ? () {
-                              controller.clear();
-                              onChanged();
-                            }
-                          : null,
-                      icon: const Icon(Icons.close, color: _kDim),
-                      tooltip: 'Rimuovi',
-                    )
-                  : OutlinedButton(
-                      onPressed:
-                          (enabled && !validating) ? onVerify : null,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: _kAccent,
-                        side: const BorderSide(color: _kBorder),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      child: validating
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.2,
-                                color: _kAccent,
-                              ),
-                            )
-                          : Text(
-                              'VERIFICA',
-                              style: GoogleFonts.barlowCondensed(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1,
-                                color: _kAccent,
-                              ),
-                            ),
-                    ),
+            const Spacer(),
+            GestureDetector(
+              onTap: enabled ? onRemove : null,
+              child: Text(
+                'Rimuovi',
+                style: GoogleFonts.barlow(
+                  fontSize: 13,
+                  color: _kRed,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
             ),
           ],
         ),
-        if (hasValid) ...[
-          const SizedBox(height: 6),
+      );
+    }
+
+    // 2. Stato: Campo aperto per l'inserimento
+    if (showInput) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Row(
             children: [
-              const Icon(Icons.check_circle, size: 16, color: _kGreen),
-              const SizedBox(width: 6),
-              Text(
-                'Sconto del ${_formatPercent(valid!.percentage)}% applicato',
-                style: GoogleFonts.barlow(fontSize: 12.5, color: _kGreen),
-              ),
-            ],
-          ),
-        ] else if (error != null) ...[
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              const Icon(Icons.error_outline, size: 16, color: _kRed),
-              const SizedBox(width: 6),
               Expanded(
-                child: Text(
-                  error!,
-                  style: GoogleFonts.barlow(fontSize: 12.5, color: _kRed),
+                child: SizedBox(
+                  height: 38,
+                  child: TextField(
+                    controller: controller,
+                    enabled: enabled,
+                    onChanged: (_) => onChanged(),
+                    onSubmitted: (_) => onVerify(),
+                    textCapitalization: TextCapitalization.characters,
+                    textInputAction: TextInputAction.done,
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.8,
+                      color: _kText,
+                    ),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      hintText: 'Codice sconto (es. ZIPLY10)',
+                      hintStyle: GoogleFonts.barlow(fontSize: 12.5, color: _kDim),
+                      filled: true,
+                      fillColor: _kSurface,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 10),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        borderSide: const BorderSide(color: _kBorder),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        borderSide: const BorderSide(color: _kAccent),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 38,
+                child: OutlinedButton(
+                  onPressed: (enabled && !validating) ? onVerify : null,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _kAccent,
+                    side: const BorderSide(color: _kBorder),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  child: validating
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: _kAccent,
+                          ),
+                        )
+                      : Text(
+                          'VERIFICA',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.8,
+                            color: _kAccent,
+                          ),
+                        ),
                 ),
               ),
             ],
           ),
+          if (error != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.error_outline, size: 15, color: _kRed),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    error!,
+                    style: GoogleFonts.barlow(fontSize: 12.5, color: _kRed),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
-      ],
+      );
+    }
+
+    // 3. Stato di default: Micro-link non invasivo
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: enabled ? onShowInput : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.local_offer_outlined, size: 14, color: _kDim),
+              const SizedBox(width: 6),
+              Text(
+                'Aggiungi Codice Sconto',
+                style: GoogleFonts.barlow(
+                  fontSize: 13,
+                  color: _kDim,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
