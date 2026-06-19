@@ -32,9 +32,11 @@ type createBookingRequest struct {
 
 // bookingResponse is the JSON shape of a created booking.
 type bookingResponse struct {
-	ID        string `json:"id"`
-	VehicleID string `json:"vehicle_id"`
-	ExpiresAt string `json:"expires_at"`
+	ID                  string   `json:"id"`
+	VehicleID           string   `json:"vehicle_id"`
+	ExpiresAt           string   `json:"expires_at"`
+	AppliedPromotion    *string  `json:"applied_promotion,omitempty"`
+	PromotionPercentage *float64 `json:"promotion_percentage,omitempty"`
 }
 
 // createBookingResponse wraps the created booking.
@@ -76,9 +78,11 @@ func (h *BookingHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusCreated, createBookingResponse{
 		Booking: bookingResponse{
-			ID:        booking.ID,
-			VehicleID: booking.VehicleID,
-			ExpiresAt: booking.ExpiresAt.UTC().Format(time.RFC3339),
+			ID:                  booking.ID,
+			VehicleID:           booking.VehicleID,
+			ExpiresAt:           booking.ExpiresAt.UTC().Format(time.RFC3339),
+			AppliedPromotion:    booking.PromotionDesc,
+			PromotionPercentage: booking.PromotionPercentage,
 		},
 	})
 }

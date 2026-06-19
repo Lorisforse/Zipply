@@ -1824,6 +1824,13 @@ class _BookingPanelState extends State<_BookingPanel> {
                   ),
                 ],
               ),
+              if (widget.booking.appliedPromotion != null) ...[
+                const SizedBox(height: 12),
+                _buildPromoBanner(
+                  widget.booking.appliedPromotion!,
+                  widget.booking.promotionPercentage ?? 0,
+                ),
+              ],
               const SizedBox(height: 14),
               // UT.13 — Sblocco per prossimità: abilitato solo entro 50 m dal
               // mezzo e finché la prenotazione non è scaduta.
@@ -1871,6 +1878,37 @@ class _BookingPanelState extends State<_BookingPanel> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPromoBanner(String description, double percentage) {
+    final s = percentage
+        .toStringAsFixed(percentage.truncateToDouble() == percentage ? 0 : 1)
+        .replaceAll('.', ',');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: _kGreen.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: _kGreen.withOpacity(0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.local_offer, size: 16, color: _kGreen),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Sconto automatico del $s% applicato: $description',
+              style: GoogleFonts.barlow(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: _kGreen,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

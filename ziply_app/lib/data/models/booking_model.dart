@@ -6,6 +6,8 @@ class BookingModel {
     required this.id,
     required this.vehicleId,
     required this.expiresAt,
+    this.appliedPromotion,
+    this.promotionPercentage,
   });
 
   final String id;
@@ -15,11 +17,17 @@ class BookingModel {
   /// temporale dal countdown della schermata di conferma.
   final DateTime expiresAt;
 
+  /// Sconto automatico applicato dal sistema (UT.21).
+  final String? appliedPromotion;
+  final double? promotionPercentage;
+
   factory BookingModel.fromJson(Map<String, dynamic> json) {
     return BookingModel(
       id: json['id'] as String,
       vehicleId: json['vehicle_id'] as String,
       expiresAt: DateTime.parse(json['expires_at'] as String),
+      appliedPromotion: json['applied_promotion'] as String?,
+      promotionPercentage: (json['promotion_percentage'] as num?)?.toDouble(),
     );
   }
 }

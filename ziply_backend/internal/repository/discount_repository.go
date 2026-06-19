@@ -78,3 +78,25 @@ func (r *DiscountRepository) FindByCode(ctx context.Context, code string) (*doma
 	}
 	return d, nil
 }
+
+// GetActivePromotion recupera la promozione attiva con la percentuale di sconto maggiore.
+// Se non ci sono promozioni attive ritorna nil, nil.
+func (r *DiscountRepository) GetActivePromotion(ctx context.Context) (*domain.Promotion, error) {
+	p := &domain.Promotion{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, description, percentage::float8, valid_from, valid_until, is_active
+		   FROM promotions
+		  WHERE is_active = TRUE AND NOW() BETWEEN valid_from AND valid_until
+		  ORDER BY percentage DESC
+		  LIMIT 1`,
+	).Scan(
+		&p.ID, &p.Description, &p.Percentage, &p.ValidFrom, &p.ValidUntil, &p.IsActive,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}

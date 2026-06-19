@@ -138,26 +138,30 @@ func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domai
 	// verificando che sia dell'utente e ancora attiva. Recupera anche
 	// l'eventuale codice sconto collegato alla prenotazione (UT.09).
 	var (
-		vehicleID   string
-		startedAt   time.Time
-		ratePerMin  float64
-		co2PerKm    float64
-		discountID  *string
-		discountPct *float64
+		vehicleID    string
+		startedAt    time.Time
+		ratePerMin   float64
+		co2PerKm     float64
+		discountID   *string
+		discountPct  *float64
+		promotionID  *string
+		promotionPct *float64
 	)
 	err = tx.QueryRow(ctx,
 		`SELECT r.vehicle_id, r.started_at,
 		        vt.tariffa_al_minuto::float8, vt.co2_risparmiata_per_km::float8,
-		        dc.id, dc.percentage::float8
+		        dc.id, dc.percentage::float8,
+		        p.id, p.percentage::float8
 		   FROM rides r
 		   JOIN vehicles v       ON v.id = r.vehicle_id
 		   JOIN vehicle_types vt ON vt.id = v.type_id
-		   LEFT JOIN bookings b       ON b.id = r.booking_id
+		   LEFT JOIN bookings b        ON b.id = r.booking_id
 		   LEFT JOIN discount_codes dc ON dc.id = b.discount_code_id
+		   LEFT JOIN promotions p      ON p.id = b.promotion_id
 		  WHERE r.id = $1 AND r.user_id = $2 AND r.status = 'attiva'
 		  FOR UPDATE OF r`,
 		rideID, userID,
-	).Scan(&vehicleID, &startedAt, &ratePerMin, &co2PerKm, &discountID, &discountPct)
+	).Scan(&vehicleID, &startedAt, &ratePerMin, &co2PerKm, &discountID, &discountPct, &promotionID, &promotionPct)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrRideNotFound
 	}
@@ -171,12 +175,25 @@ func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domai
 	gross := math.Round(float64(minutes)*ratePerMin*100) / 100
 	co2 := math.Round(domain.EstimateCo2SavedGrams(elapsed, co2PerKm))
 
-	// UT.09 — applica l'eventuale sconto collegato alla prenotazione: il costo
-	// persistito è già al netto e applied_discount registra l'importo scontato.
+	// UT.09 / UT.21 — applica lo sconto complessivo: somma la percentuale del
+	// codice sconto manuale (se presente) e della promozione automatica (se presente),
+	// fino a un massimo del 100%. Il costo finale è al netto e applied_discount
+	// registra la quota scontata.
 	cost := gross
 	var appliedDiscount float64
+	var discountPctCombined float64
 	if discountPct != nil {
-		cost, appliedDiscount = domain.ApplyDiscount(gross, *discountPct)
+		discountPctCombined += *discountPct
+	}
+	if promotionPct != nil {
+		discountPctCombined += *promotionPct
+	}
+
+	if discountPctCombined > 0 {
+		if discountPctCombined > 100 {
+			discountPctCombined = 100
+		}
+		cost, appliedDiscount = domain.ApplyDiscount(gross, discountPctCombined)
 	}
 
 	if _, err := tx.Exec(ctx,

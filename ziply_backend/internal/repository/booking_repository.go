@@ -78,17 +78,41 @@ func (r *BookingRepository) Create(ctx context.Context, userID, vehicleID, disco
 		discountID = &id
 	}
 
+	// UT.21 — ricerca di una promozione attiva applicabile.
+	var promotionID, promotionDesc *string
+	var promotionPercentage *float64
+	var pID, pDesc string
+	var pPct float64
+	err = tx.QueryRow(ctx,
+		`SELECT id, description, percentage::float8
+		   FROM promotions
+		  WHERE is_active = TRUE AND NOW() BETWEEN valid_from AND valid_until
+		  ORDER BY percentage DESC
+		  LIMIT 1`,
+	).Scan(&pID, &pDesc, &pPct)
+	if err == nil {
+		promotionID = &pID
+		promotionDesc = &pDesc
+		promotionPercentage = &pPct
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+
 	// Insert the booking.
 	b := &domain.Booking{UserID: userID, VehicleID: vehicleID}
 	err = tx.QueryRow(ctx,
-		`INSERT INTO bookings (user_id, vehicle_id, expires_at, status, discount_code_id)
-		 VALUES ($1, $2, $3, 'attiva', $4)
+		`INSERT INTO bookings (user_id, vehicle_id, expires_at, status, discount_code_id, promotion_id)
+		 VALUES ($1, $2, $3, 'attiva', $4, $5)
 		 RETURNING id, created_at, expires_at, status`,
-		userID, vehicleID, expiresAt, discountID,
+		userID, vehicleID, expiresAt, discountID, promotionID,
 	).Scan(&b.ID, &b.CreatedAt, &b.ExpiresAt, &b.Status)
 	if err != nil {
 		return nil, err
 	}
+
+	b.PromotionID = promotionID
+	b.PromotionDesc = promotionDesc
+	b.PromotionPercentage = promotionPercentage
 
 	// Mark the vehicle reserved.
 	if _, err := tx.Exec(ctx,

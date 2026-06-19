@@ -24,19 +24,24 @@ type orsClient interface {
 	Directions(ctx context.Context, profile string, from, to ors.Point, avoidPolygons json.RawMessage) (*ors.Route, error)
 }
 
+type activePromotionLister interface {
+	GetActivePromotion(ctx context.Context) (*domain.Promotion, error)
+}
+
 // RouteUsecase calcola il percorso dal mezzo selezionato alla destinazione
 // inserita dall'utente (UT.07), per tipologia di mezzo ed evitando le zone
 // vietate. In caso di indisponibilità di OpenRouteService ricade su una linea
 // diretta, così l'endpoint restituisce sempre un percorso utilizzabile.
 type RouteUsecase struct {
-	vehicles vehicleByID
-	zones    zoneLister
-	ors      orsClient
+	vehicles   vehicleByID
+	zones      zoneLister
+	ors        orsClient
+	promotions activePromotionLister
 }
 
 // NewRouteUsecase crea un RouteUsecase con le dipendenze indicate.
-func NewRouteUsecase(vehicles vehicleByID, zones zoneLister, orsc orsClient) *RouteUsecase {
-	return &RouteUsecase{vehicles: vehicles, zones: zones, ors: orsc}
+func NewRouteUsecase(vehicles vehicleByID, zones zoneLister, orsc orsClient, promotions activePromotionLister) *RouteUsecase {
+	return &RouteUsecase{vehicles: vehicles, zones: zones, ors: orsc, promotions: promotions}
 }
 
 // Compute restituisce il percorso più rapido dal mezzo [vehicleID] al punto
@@ -66,7 +71,14 @@ func (uc *RouteUsecase) Compute(ctx context.Context, vehicleID string, destLat, 
 
 	// UT.03 — Stima costo: durata stimata (in minuti) × tariffa al minuto del
 	// mezzo selezionato. Vale sia per il percorso ORS sia per il fallback.
-	result.EstimatedCost = (result.DurationSeconds / 60) * v.TariffaAlMinuto
+	grossCost := (result.DurationSeconds / 60) * v.TariffaAlMinuto
+
+	// UT.21 — apporta l'eventuale sconto della promozione automatica attiva alla stima.
+	promo, err := uc.promotions.GetActivePromotion(ctx)
+	if err == nil && promo != nil {
+		grossCost, _ = domain.ApplyDiscount(grossCost, promo.Percentage)
+	}
+	result.EstimatedCost = grossCost
 
 	// UT.08 — Suggerimento tipologia in base alla distanza del percorso (la
 	// stessa mostrata all'utente): oltre la soglia auto, sotto bici/monopattino.

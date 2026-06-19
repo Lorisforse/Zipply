@@ -56,7 +56,7 @@ func main() {
 
 	// UT.07/03/08 — Percorso mezzo→destinazione via OpenRouteService, con stima
 	// costo e suggerimento tipologia inclusi nella risposta.
-	routeUsecase := usecase.NewRouteUsecase(vehicleRepo, forbiddenZoneRepo, ors.New())
+	routeUsecase := usecase.NewRouteUsecase(vehicleRepo, forbiddenZoneRepo, ors.New(), discountRepo)
 	routeHandler := handler.NewRouteHandler(routeUsecase)
 
 	mux := http.NewServeMux()
