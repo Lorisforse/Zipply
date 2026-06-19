@@ -129,3 +129,61 @@ func (h *RideHandler) End(w http.ResponseWriter, r *http.Request) {
 		"applied_discount": summary.AppliedDiscount,
 	})
 }
+
+// Pause handles POST /rides/{id}/pause, pausing the active ride of the authenticated user.
+func (h *RideHandler) Pause(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.CtxUserID).(string)
+	if !ok || userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token non valido"})
+		return
+	}
+
+	rideID := r.PathValue("id")
+	if rideID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Dati non validi"})
+		return
+	}
+
+	err := h.rides.Pause(r.Context(), userID, rideID)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrRideNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "corsa non trovata o non attiva"})
+		default:
+			log.Printf("[RIDES] pause failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "paused"})
+}
+
+// Resume handles POST /rides/{id}/resume, resuming the paused ride of the authenticated user.
+func (h *RideHandler) Resume(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.CtxUserID).(string)
+	if !ok || userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token non valido"})
+		return
+	}
+
+	rideID := r.PathValue("id")
+	if rideID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Dati non validi"})
+		return
+	}
+
+	err := h.rides.Resume(r.Context(), userID, rideID)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrRideNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "corsa non trovata o non in pausa"})
+		default:
+			log.Printf("[RIDES] resume failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "attiva"})
+}

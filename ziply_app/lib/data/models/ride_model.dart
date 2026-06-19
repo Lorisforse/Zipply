@@ -6,6 +6,7 @@ class RideModel {
     required this.id,
     required this.vehicleId,
     required this.startedAt,
+    this.status = 'attiva',
   });
 
   final String id;
@@ -15,11 +16,28 @@ class RideModel {
   /// il costo aggiornato in tempo reale nella schermata di noleggio attivo.
   final DateTime startedAt;
 
+  final String status;
+
   factory RideModel.fromJson(Map<String, dynamic> json) {
     return RideModel(
       id: json['ride_id'] as String,
       vehicleId: json['vehicle_id'] as String,
       startedAt: DateTime.parse(json['started_at'] as String),
+      status: json['status'] as String? ?? 'attiva',
+    );
+  }
+
+  RideModel copyWith({
+    String? id,
+    String? vehicleId,
+    DateTime? startedAt,
+    String? status,
+  }) {
+    return RideModel(
+      id: id ?? this.id,
+      vehicleId: vehicleId ?? this.vehicleId,
+      startedAt: startedAt ?? this.startedAt,
+      status: status ?? this.status,
     );
   }
 }

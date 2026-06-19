@@ -49,6 +49,9 @@ func main() {
 	rideUsecase := usecase.NewRideUsecase(rideRepo)
 	rideHandler := handler.NewRideHandler(rideUsecase)
 
+	// Start the background sweeper for paused rides (> 24 hours)
+	repository.StartSweeper(ctx, pool, rideRepo)
+
 	// UT.09 — Validazione codici sconto inseriti in conferma prenotazione.
 	discountRepo := repository.NewDiscountRepository(pool)
 	discountUsecase := usecase.NewDiscountUsecase(discountRepo)
@@ -73,6 +76,8 @@ func main() {
 	mux.Handle("POST /bookings", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Create)))
 	mux.Handle("POST /bookings/{id}/cancel", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Cancel)))
 	mux.Handle("POST /rides/unlock", middleware.JWTAuth(http.HandlerFunc(rideHandler.Unlock)))
+	mux.Handle("POST /rides/{id}/pause", middleware.JWTAuth(http.HandlerFunc(rideHandler.Pause)))
+	mux.Handle("POST /rides/{id}/resume", middleware.JWTAuth(http.HandlerFunc(rideHandler.Resume)))
 	mux.Handle("POST /rides/{id}/end", middleware.JWTAuth(http.HandlerFunc(rideHandler.End)))
 	mux.Handle("POST /payment-methods", middleware.JWTAuth(http.HandlerFunc(paymentMethodHandler.Create)))
 	mux.Handle("GET /payment-methods", middleware.JWTAuth(http.HandlerFunc(paymentMethodHandler.List)))

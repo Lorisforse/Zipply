@@ -70,6 +70,76 @@ class RideService {
     );
   }
 
+  /// Mette in pausa la corsa [rideId] (POST /rides/{id}/pause).
+  /// Restituisce lo stato aggiornato (dovrebbe essere 'paused').
+  Future<String> pauseRide(String rideId) async {
+    final token = await _storage.read(key: kTokenKey);
+
+    final http.Response response;
+    try {
+      response = await _client.post(
+        Uri.parse('$kBaseUrl/rides/$rideId/pause'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(_timeout);
+    } on http.ClientException {
+      throw Exception('Impossibile connettersi al server');
+    } on TimeoutException {
+      throw Exception('Impossibile connettersi al server');
+    }
+
+    final body = _decodeBody(response.bodyBytes);
+
+    if (response.statusCode == 200) {
+      return body?['status'] as String? ?? 'paused';
+    }
+    if (response.statusCode == 401) throw const SessionExpiredException();
+
+    final serverMessage = body?['error'];
+    throw Exception(
+      serverMessage is String && serverMessage.isNotEmpty
+          ? serverMessage
+          : 'Impossibile mettere in pausa il noleggio',
+    );
+  }
+
+  /// Riprende la corsa [rideId] (POST /rides/{id}/resume).
+  /// Restituisce lo stato aggiornato (dovrebbe essere 'attiva').
+  Future<String> resumeRide(String rideId) async {
+    final token = await _storage.read(key: kTokenKey);
+
+    final http.Response response;
+    try {
+      response = await _client.post(
+        Uri.parse('$kBaseUrl/rides/$rideId/resume'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(_timeout);
+    } on http.ClientException {
+      throw Exception('Impossibile connettersi al server');
+    } on TimeoutException {
+      throw Exception('Impossibile connettersi al server');
+    }
+
+    final body = _decodeBody(response.bodyBytes);
+
+    if (response.statusCode == 200) {
+      return body?['status'] as String? ?? 'attiva';
+    }
+    if (response.statusCode == 401) throw const SessionExpiredException();
+
+    final serverMessage = body?['error'];
+    throw Exception(
+      serverMessage is String && serverMessage.isNotEmpty
+          ? serverMessage
+          : 'Impossibile riprendere il noleggio',
+    );
+  }
+
   /// Esegue la POST /rides/unlock con il body indicato. In caso di errore
   /// lancia una Exception con un messaggio pronto per la UI; per 404/409
   /// propaga il messaggio del backend ("veicolo non trovato", "prenotazione

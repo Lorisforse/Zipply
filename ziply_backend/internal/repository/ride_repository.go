@@ -135,7 +135,7 @@ func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domai
 	defer tx.Rollback(ctx)
 
 	// Blocca la corsa e leggi inizio, tariffa e CO2/km della tipologia,
-	// verificando che sia dell'utente e ancora attiva. Recupera anche
+	// verificando che sia dell'utente e ancora attiva (o in pausa). Recupera anche
 	// l'eventuale codice sconto collegato alla prenotazione (UT.09).
 	var (
 		vehicleID    string
@@ -158,7 +158,7 @@ func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domai
 		   LEFT JOIN bookings b        ON b.id = r.booking_id
 		   LEFT JOIN discount_codes dc ON dc.id = b.discount_code_id
 		   LEFT JOIN promotions p      ON p.id = b.promotion_id
-		  WHERE r.id = $1 AND r.user_id = $2 AND r.status = 'attiva'
+		  WHERE r.id = $1 AND r.user_id = $2 AND r.status IN ('attiva', 'paused')
 		  FOR UPDATE OF r`,
 		rideID, userID,
 	).Scan(&vehicleID, &startedAt, &ratePerMin, &co2PerKm, &discountID, &discountPct, &promotionID, &promotionPct)
@@ -170,10 +170,69 @@ func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domai
 	}
 
 	endedAt := time.Now()
+
+	// Recupera tutti gli intervalli di pausa della corsa.
+	rows, err := tx.Query(ctx,
+		`SELECT paused_at, resumed_at FROM ride_pauses WHERE ride_id = $1 ORDER BY paused_at ASC`,
+		rideID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var totalPauseDuration time.Duration
+	for rows.Next() {
+		var pAt time.Time
+		var rAt *time.Time
+		if err := rows.Scan(&pAt, &rAt); err != nil {
+			return nil, err
+		}
+		var endP time.Time
+		if rAt != nil {
+			endP = *rAt
+		} else {
+			// Pausa non ancora chiusa (corsa terminata mentre era in pausa).
+			endP = endedAt
+			// Aggiorna il record nel database per coerenza storica.
+			_, err = tx.Exec(ctx,
+				`UPDATE ride_pauses SET resumed_at = $2 WHERE ride_id = $1 AND resumed_at IS NULL`,
+				rideID, endedAt,
+			)
+			if err != nil {
+				return nil, err
+			}
+		}
+		totalPauseDuration += endP.Sub(pAt)
+	}
+
 	elapsed := endedAt.Sub(startedAt)
-	minutes := domain.ChargedMinutes(elapsed)
-	gross := math.Round(float64(minutes)*ratePerMin*100) / 100
-	co2 := math.Round(domain.EstimateCo2SavedGrams(elapsed, co2PerKm))
+	activeDuration := elapsed - totalPauseDuration
+	if activeDuration < 0 {
+		activeDuration = 0
+	}
+
+	// Calcola i minuti di noleggio attivo ed i minuti di pausa addebitati.
+	activeMinutes := domain.ChargedMinutes(activeDuration)
+	pauseMinutes := 0
+	if totalPauseDuration.Seconds() >= 20 {
+		pauseMinutes = int((totalPauseDuration.Seconds() + 59) / 60)
+	}
+
+	// 3 minuti di pausa gratuiti (UT.15).
+	chargeablePauseMinutes := 0
+	if pauseMinutes > 3 {
+		chargeablePauseMinutes = pauseMinutes - 3
+	}
+
+	// Tariffa di pausa ridotta al 50%.
+	ratePausePerMin := ratePerMin * 0.50
+
+	grossActive := float64(activeMinutes) * ratePerMin
+	grossPause := float64(chargeablePauseMinutes) * ratePausePerMin
+	gross := math.Round((grossActive + grossPause)*100) / 100
+
+	co2 := math.Round(domain.EstimateCo2SavedGrams(activeDuration, co2PerKm))
 
 	// UT.09 / UT.21 — applica lo sconto complessivo: somma la percentuale del
 	// codice sconto manuale (se presente) e della promozione automatica (se presente),
@@ -196,13 +255,15 @@ func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domai
 		cost, appliedDiscount = domain.ApplyDiscount(gross, discountPctCombined)
 	}
 
+	totalMinutes := activeMinutes + chargeablePauseMinutes
+
 	if _, err := tx.Exec(ctx,
 		`UPDATE rides
 		    SET status = 'completata', ended_at = $2,
 		        duration_minutes = $3, total_cost = $4, co2_saved = $5,
 		        applied_discount = $6
 		  WHERE id = $1`,
-		rideID, endedAt, minutes, cost, co2, appliedDiscount,
+		rideID, endedAt, totalMinutes, cost, co2, appliedDiscount,
 	); err != nil {
 		return nil, err
 	}
@@ -229,9 +290,118 @@ func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domai
 		return nil, err
 	}
 	return &domain.RideSummary{
-		DurationMinutes: minutes,
+		DurationMinutes: totalMinutes,
 		TotalCost:       cost,
 		Co2SavedGrams:   co2,
 		AppliedDiscount: appliedDiscount,
 	}, nil
+}
+
+// Pause mette in pausa la corsa attiva dell'utente. Cambia lo stato della corsa
+// a 'paused', inserisce un record in ride_pauses, e ritorna il tipo di veicolo.
+func (r *RideRepository) Pause(ctx context.Context, userID, rideID string) (string, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	// Verifica che la corsa sia dell'utente ed attiva, e recupera il tipo di veicolo.
+	var status string
+	var vehicleType string
+	err = tx.QueryRow(ctx,
+		`SELECT r.status, vt.nome
+		   FROM rides r
+		   JOIN vehicles v ON v.id = r.vehicle_id
+		   JOIN vehicle_types vt ON vt.id = v.type_id
+		  WHERE r.id = $1 AND r.user_id = $2 FOR UPDATE OF r`,
+		rideID, userID,
+	).Scan(&status, &vehicleType)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", domain.ErrRideNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if status != "attiva" {
+		return "", errors.New("corsa non attiva, impossibile mettere in pausa")
+	}
+
+	// Imposta lo stato della corsa a 'paused'.
+	_, err = tx.Exec(ctx,
+		`UPDATE rides SET status = 'paused' WHERE id = $1`,
+		rideID,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	// Inserisce l'intervallo di pausa in ride_pauses.
+	_, err = tx.Exec(ctx,
+		`INSERT INTO ride_pauses (ride_id, paused_at) VALUES ($1, NOW())`,
+		rideID,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return vehicleType, tx.Commit(ctx)
+}
+
+// Resume riattiva la corsa in pausa dell'utente. Ripristina lo stato a 'attiva',
+// aggiorna resumed_at nell'ultimo record di ride_pauses, e ritorna il tipo di veicolo.
+func (r *RideRepository) Resume(ctx context.Context, userID, rideID string) (string, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	// Verifica che la corsa sia dell'utente ed in pausa, e recupera il tipo di veicolo.
+	var status string
+	var vehicleType string
+	err = tx.QueryRow(ctx,
+		`SELECT r.status, vt.nome
+		   FROM rides r
+		   JOIN vehicles v ON v.id = r.vehicle_id
+		   JOIN vehicle_types vt ON vt.id = v.type_id
+		  WHERE r.id = $1 AND r.user_id = $2 FOR UPDATE OF r`,
+		rideID, userID,
+	).Scan(&status, &vehicleType)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", domain.ErrRideNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if status != "paused" {
+		return "", errors.New("corsa non in pausa, impossibile riprenderla")
+	}
+
+	// Imposta lo stato della corsa a 'attiva'.
+	_, err = tx.Exec(ctx,
+		`UPDATE rides SET status = 'attiva' WHERE id = $1`,
+		rideID,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	// Chiude l'intervallo di pausa aggiornando l'ultimo record di ride_pauses.
+	_, err = tx.Exec(ctx,
+		`UPDATE ride_pauses
+		    SET resumed_at = NOW()
+		  WHERE id = (
+		      SELECT id FROM ride_pauses
+		       WHERE ride_id = $1 AND resumed_at IS NULL
+		       ORDER BY paused_at DESC
+		       LIMIT 1
+		  )`,
+		rideID,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	return vehicleType, tx.Commit(ctx)
 }

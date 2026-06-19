@@ -117,7 +117,6 @@ class RideScreen extends StatelessWidget {
   }
 }
 
-// ── Banner noleggio in corso (timer + costo live) ─────────────────────────
 class _ActiveRentalBanner extends StatefulWidget {
   const _ActiveRentalBanner({required this.ride, required this.vehicle});
 
@@ -132,11 +131,19 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
   final RideService _rideService = RideService();
   Timer? _ticker;
   bool _ending = false;
+  bool _togglingPause = false;
+
+  late String _currentStatus;
+  late DateTime _stateEntryTime;
+  int _accumulatedActiveSeconds = 0;
+  int _accumulatedPauseSeconds = 0;
 
   @override
   void initState() {
     super.initState();
-    // Tick al secondo: timer e costo sono ricalcolati da started_at.
+    _currentStatus = widget.ride.status;
+    _stateEntryTime = widget.ride.startedAt;
+    // Tick al secondo: timer e costo sono ricalcolati.
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
@@ -151,25 +158,53 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
   /// Tariffa al minuto derivata dalla tariffa oraria del mezzo.
   double get _ratePerMinute => widget.vehicle.hourlyRate / 60;
 
-  /// Secondi trascorsi dall'avvio della corsa (mai negativi).
-  int get _elapsedSeconds {
-    final diff = DateTime.now().difference(widget.ride.startedAt).inSeconds;
-    return diff < 0 ? 0 : diff;
+  /// Secondi di corsa attiva.
+  int get _activeSeconds {
+    if (_currentStatus == 'attiva') {
+      return _accumulatedActiveSeconds + DateTime.now().difference(_stateEntryTime).inSeconds;
+    }
+    return _accumulatedActiveSeconds;
   }
 
-  /// Minuti addebitati: l'importo non cambia ogni secondo ma a "scatti di
-  /// minuto" (per non addebitare cifre irrisorie tipo 0,03 €). Sotto i 20
-  /// secondi è gratis; dai 20 secondi in poi si paga 1 minuto pieno; ogni
-  /// secondo oltre il minuto pieno fa scattare il minuto successivo
-  /// (es. 01:01 → 2 minuti). Cioè: 0 se < 20 s, altrimenti ceil(secondi/60).
-  int get _chargedMinutes {
-    final sec = _elapsedSeconds;
+  /// Secondi di sosta.
+  int get _pauseSeconds {
+    if (_currentStatus == 'paused') {
+      return _accumulatedPauseSeconds + DateTime.now().difference(_stateEntryTime).inSeconds;
+    }
+    return _accumulatedPauseSeconds;
+  }
+
+  /// Secondi trascorsi totali.
+  int get _elapsedSeconds {
+    return _activeSeconds + _pauseSeconds;
+  }
+
+  /// Minuti di corsa attiva addebitati.
+  int get _chargedActiveMinutes {
+    final sec = _activeSeconds;
     if (sec < 20) return 0;
     return (sec / 60).ceil();
   }
 
-  /// Costo corrente: minuti addebitati × tariffa al minuto.
-  double get _cost => _chargedMinutes * _ratePerMinute;
+  /// Minuti di sosta addebitati.
+  int get _chargedPauseMinutes {
+    final sec = _pauseSeconds;
+    if (sec < 20) return 0;
+    return (sec / 60).ceil();
+  }
+
+  /// Minuti di pausa da pagare (dopo i primi 3 min gratuiti).
+  int get _chargeablePauseMinutes {
+    final pm = _chargedPauseMinutes;
+    return pm > 3 ? pm - 3 : 0;
+  }
+
+  /// Costo corrente ricalcolato.
+  double get _cost {
+    final activeCost = _chargedActiveMinutes * _ratePerMinute;
+    final pauseCost = _chargeablePauseMinutes * (_ratePerMinute * 0.50);
+    return activeCost + pauseCost;
+  }
 
   String _formatElapsed(int sec) {
     final h = sec ~/ 3600;
@@ -182,17 +217,65 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
   String _euro(double value) =>
       '€ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
 
+  /// Gestisce la sosta (pausa/ripresa).
+  Future<void> _onTogglePause() async {
+    if (_togglingPause || _ending) return;
+    setState(() => _togglingPause = true);
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      if (_currentStatus == 'attiva') {
+        final newStatus = await _rideService.pauseRide(widget.ride.id);
+        if (!mounted) return;
+        setState(() {
+          _accumulatedActiveSeconds += DateTime.now().difference(_stateEntryTime).inSeconds;
+          _stateEntryTime = DateTime.now();
+          _currentStatus = newStatus;
+        });
+      } else {
+        final newStatus = await _rideService.resumeRide(widget.ride.id);
+        if (!mounted) return;
+        setState(() {
+          _accumulatedPauseSeconds += DateTime.now().difference(_stateEntryTime).inSeconds;
+          _stateEntryTime = DateTime.now();
+          _currentStatus = newStatus;
+        });
+      }
+    } on SessionExpiredException catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: _kSurface,
+          content: Text(
+            e.message,
+            style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+          ),
+        ),
+      );
+    } on Exception catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: _kSurface,
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+            style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _togglingPause = false);
+      }
+    }
+  }
+
   /// Termina il noleggio: chiude la corsa lato backend (così il mezzo torna
-  /// disponibile) e mostra il riepilogo di fine corsa (UT.04). Durata e costo
-  /// sono quelli server-autoritativi restituiti da /end (il costo è già al
-  /// netto dell'eventuale sconto, UT.09); la durata congelata dal banner è il
-  /// fallback se la risposta non la riporta. In caso di errore resta sulla
-  /// schermata mostrando il messaggio.
+  /// disponibile) e mostra il riepilogo di fine corsa.
   Future<void> _onEndRide() async {
-    if (_ending) return;
-    // Durata congelata come mostrata nel banner: usata come fallback e per la
-    // precisione al secondo (la risposta riporta i minuti addebitati).
-    final frozenDuration = Duration(seconds: _elapsedSeconds);
+    if (_ending || _togglingPause) return;
+    // Calcoliamo la CO2 e mostriamo il riepilogo basato sul tempo attivo
+    final frozenDuration = Duration(seconds: _activeSeconds);
     zlog('Termino il noleggio ${widget.ride.id}', tag: 'Noleggio');
     setState(() => _ending = true);
     final navigator = Navigator.of(context);
@@ -203,7 +286,7 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
       zlog('Noleggio terminato: mostro il riepilogo', tag: 'Noleggio');
       await RideSummaryScreen.show(
         navigator.context,
-        ride: widget.ride,
+        ride: widget.ride.copyWith(status: _currentStatus),
         vehicle: widget.vehicle,
         duration: frozenDuration,
         cost: summary.totalCost,
@@ -260,13 +343,13 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Riga stato: pallino pulsante + "NOLEGGIO IN CORSO" + tariffa.
+              // Riga stato: pallino pulsante + "NOLEGGIO IN CORSO" / "NOLEGGIO IN PAUSA" + tariffa.
               Row(
                 children: [
                   const _PulseDot(),
                   const SizedBox(width: 8),
                   Text(
-                    'NOLEGGIO IN CORSO',
+                    _currentStatus == 'paused' ? 'NOLEGGIO IN PAUSA' : 'NOLEGGIO IN CORSO',
                     style: GoogleFonts.barlowCondensed(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
@@ -348,42 +431,112 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              // Azione: termina noleggio (chiude la corsa e libera il mezzo).
-              SizedBox(
-                height: 52,
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _ending ? null : _onEndRide,
-                  icon: _ending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: _kBg,
-                          ),
-                        )
-                      : const Icon(Icons.stop_rounded, size: 20, color: _kBg),
-                  label: Text(
-                    _ending ? 'TERMINO…' : 'TERMINA NOLEGGIO',
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                      color: _kBg,
-                    ),
+              if (_currentStatus == 'paused') ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: _kSurface2,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: _kBorder, width: 0.5),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _kAccent,
-                    foregroundColor: _kBg,
-                    disabledBackgroundColor: _kAccent,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.info_outline_rounded, size: 16, color: _kAccent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'In sosta da ${_formatElapsed(_pauseSeconds)}. I primi 3 min di sosta sono gratuiti, poi al 50% della tariffa standard.',
+                          style: GoogleFonts.barlow(fontSize: 12, color: _kText),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+              ],
+              const SizedBox(height: 14),
+              // Azione: termina noleggio (chiude la corsa e libera il mezzo).
+              Row(
+                children: [
+                  Expanded(
+                    flex: 1,
+                    child: SizedBox(
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: _ending || _togglingPause ? null : _onTogglePause,
+                        icon: _togglingPause
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: _kAccent,
+                                ),
+                              )
+                            : Icon(
+                                _currentStatus == 'paused'
+                                    ? Icons.play_arrow_rounded
+                                    : Icons.pause_rounded,
+                                size: 20,
+                                color: _kAccent,
+                              ),
+                        label: Text(
+                          _currentStatus == 'paused' ? 'RIPRENDI' : 'PAUSA',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1,
+                            color: _kAccent,
+                          ),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: _kAccent, width: 1.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: SizedBox(
+                      height: 52,
+                      child: ElevatedButton.icon(
+                        onPressed: _ending || _togglingPause ? null : _onEndRide,
+                        icon: _ending
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: _kBg,
+                                ),
+                              )
+                            : const Icon(Icons.stop_rounded, size: 20, color: _kBg),
+                        label: Text(
+                          _ending ? 'TERMINO…' : 'TERMINA NOLEGGIO',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1,
+                            color: _kBg,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _kAccent,
+                          foregroundColor: _kBg,
+                          disabledBackgroundColor: _kAccent,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
