@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/services/payment_method_service.dart';
@@ -196,16 +197,9 @@ class _GroupRideSummaryScreenState extends State<GroupRideSummaryScreen> {
             actions: [
               TextButton(
                 onPressed: () {
-                  Clipboard.setData(ClipboardData(
-                    text: 'Usa questo link per pagare la tua quota Ziply: $shareUrl',
-                  ));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      backgroundColor: _kSurface2,
-                      content: Text(
-                        'Messaggio di condivisione copiato!',
-                        style: GoogleFonts.barlow(color: _kText),
-                      ),
+                  SharePlus.instance.share(
+                    ShareParams(
+                      text: 'Ciao! Puoi pagare la tua quota del noleggio di gruppo Ziply usando questo link: $shareUrl',
                     ),
                   );
                 },
