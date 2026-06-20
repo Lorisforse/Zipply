@@ -155,17 +155,18 @@ func (r *RideRepository) endRideTx(ctx context.Context, tx pgx.Tx, userID, rideI
 	// verificando che sia dell'utente e ancora attiva (o in pausa). Recupera anche
 	// l'eventuale codice sconto collegato alla prenotazione (UT.09).
 	var (
-		vehicleID    string
-		startedAt    time.Time
-		ratePerMin   float64
-		co2PerKm     float64
-		discountID   *string
-		discountPct  *float64
-		promotionID  *string
-		promotionPct *float64
+		vehicleID     string
+		vehicleTypeID string
+		startedAt     time.Time
+		ratePerMin    float64
+		co2PerKm      float64
+		discountID    *string
+		discountPct   *float64
+		promotionID   *string
+		promotionPct  *float64
 	)
 	err = tx.QueryRow(ctx,
-		`SELECT r.vehicle_id, r.started_at,
+		`SELECT r.vehicle_id, vt.id, r.started_at,
 		        vt.tariffa_al_minuto::float8, vt.co2_risparmiata_per_km::float8,
 		        dc.id, dc.percentage::float8,
 		        p.id, p.percentage::float8
@@ -178,7 +179,7 @@ func (r *RideRepository) endRideTx(ctx context.Context, tx pgx.Tx, userID, rideI
 		  WHERE r.id = $1 AND r.user_id = $2 AND r.status IN ('attiva', 'paused')
 		  FOR UPDATE OF r`,
 		rideID, userID,
-	).Scan(&vehicleID, &startedAt, &ratePerMin, &co2PerKm, &discountID, &discountPct, &promotionID, &promotionPct)
+	).Scan(&vehicleID, &vehicleTypeID, &startedAt, &ratePerMin, &co2PerKm, &discountID, &discountPct, &promotionID, &promotionPct)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, domain.ErrRideNotFound
 	}
@@ -270,6 +271,23 @@ func (r *RideRepository) endRideTx(ctx context.Context, tx pgx.Tx, userID, rideI
 			discountPctCombined = 100
 		}
 		cost, appliedDiscount = domain.ApplyDiscount(gross, discountPctCombined)
+	}
+
+	// UT.22 — abbonamento attivo per la tipologia del mezzo: corsa gratuita.
+	var hasSub bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS(
+			SELECT 1 FROM subscriptions
+			WHERE user_id = $1 AND vehicle_type_id = $2
+			  AND status = 'active' AND end_date > NOW()
+		)`,
+		userID, vehicleTypeID,
+	).Scan(&hasSub); err != nil {
+		return nil, err
+	}
+	if hasSub {
+		appliedDiscount = gross
+		cost = 0
 	}
 
 	totalMinutes := activeMinutes + chargeablePauseMinutes
