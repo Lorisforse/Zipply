@@ -67,8 +67,8 @@ void main() {
           zonedScheduleCalls.first.arguments as Map<dynamic, dynamic>;
       
       expect(args['id'], 100);
-      expect(args['title'], 'La tua prenotazione sta per scadere');
-      expect(args['body'], contains('Bici elettrica'));
+      expect(args['title'], 'Prenotazione in scadenza');
+      expect(args['body'], 'La tua prenotazione sta scadendo.');
       expect(args['payload'], 'b-123');
     });
 
