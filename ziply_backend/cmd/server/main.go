@@ -108,6 +108,13 @@ func main() {
 	// UT.11 — Segnalazione malfunzionamento
 	mux.Handle("POST /malfunction-reports", middleware.JWTAuth(http.HandlerFunc(malfunctionHandler.Create)))
 
+	// UT.22 — Abbonamenti per tipologia di mezzo
+	subscriptionRepo := repository.NewSubscriptionRepository(pool)
+	subscriptionUsecase := usecase.NewSubscriptionUsecase(subscriptionRepo)
+	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionUsecase)
+	mux.Handle("GET /subscriptions", middleware.JWTAuth(http.HandlerFunc(subscriptionHandler.List)))
+	mux.Handle("POST /subscriptions", middleware.JWTAuth(http.HandlerFunc(subscriptionHandler.Subscribe)))
+
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
 		port = "8080"

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
 import 'package:ziply_app/presentation/mobile/payment/payment_methods_screen.dart';
+import 'package:ziply_app/presentation/mobile/subscription/subscription_screen.dart';
 import 'package:ziply_app/services/auth_service.dart';
 import 'package:ziply_app/services/payment_link_service.dart';
 
@@ -110,6 +111,12 @@ class _MenuDrawerState extends State<MenuDrawer> {
     );
   }
 
+  /// Chiude il drawer e apre la schermata degli abbonamenti (UT.22).
+  void _openSubscriptions() {
+    Scaffold.of(context).closeEndDrawer();
+    SubscriptionScreen.show(context);
+  }
+
 
 
   /// Voce non ancora implementata: chiude il drawer e avvisa l'utente.
@@ -211,7 +218,7 @@ class _MenuDrawerState extends State<MenuDrawer> {
             _MenuItem(
               icon: Icons.workspace_premium_outlined,
               label: 'Abbonamenti',
-              onTap: () => _notAvailable('Abbonamenti'),
+              onTap: _openSubscriptions,
             ),
             _MenuItem(
               icon: Icons.history,
