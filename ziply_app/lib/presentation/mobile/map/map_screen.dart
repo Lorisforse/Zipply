@@ -117,6 +117,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   List<VehicleModel> _groupVehicles = const [];
   bool _groupBooking = false; // create in corso
   bool _groupBusy = false; // sblocco/annullo gruppo in corso
+  // UT.16 — messaggio contestuale durante la selezione (stile banner zona),
+  // mostrato in alto sulla mappa e auto-nascosto dopo qualche secondo.
+  String? _groupHint;
+  Timer? _groupHintTimer;
 
   // UT.07 — Destinazione e percorso (mezzo→destinazione). La destinazione si
   // imposta da una ricerca testuale; toccando un mezzo si vede il percorso per
@@ -177,6 +181,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void dispose() {
     _positionSub?.cancel();
     _refreshTimer?.cancel();
+    _groupHintTimer?.cancel();
     super.dispose();
   }
 
@@ -630,9 +635,21 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   /// Esce dalla modalità selezione gruppo, scartando la selezione corrente.
   void _exitGroupMode() {
+    _groupHintTimer?.cancel();
     setState(() {
       _groupMode = false;
       _groupSelection.clear();
+      _groupHint = null;
+    });
+  }
+
+  /// Messaggio contestuale durante la selezione gruppo, con lo stesso stile del
+  /// banner "zona vietata" (in-mappa, in alto). Si auto-nasconde dopo 4 secondi.
+  void _showGroupHint(String message) {
+    _groupHintTimer?.cancel();
+    setState(() => _groupHint = message);
+    _groupHintTimer = Timer(const Duration(seconds: 4), () {
+      if (mounted) setState(() => _groupHint = null);
     });
   }
 
@@ -649,11 +666,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       return;
     }
     if (!_groupEligible(vehicle)) {
-      _showSnack('Nel gruppo puoi aggiungere solo bici e monopattini');
+      _showGroupHint('Nel gruppo puoi aggiungere solo bici e monopattini');
       return;
     }
     if (_groupSelection.length >= _kMaxGroupVehicles) {
-      _showSnack('Puoi prenotare al massimo $_kMaxGroupVehicles mezzi');
+      _showGroupHint('Puoi prenotare al massimo $_kMaxGroupVehicles mezzi');
       return;
     }
     if (_groupSelection.isNotEmpty) {
@@ -665,12 +682,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         vehicle.longitude,
       );
       if (meters > _kGroupRadiusMeters) {
-        _showSnack(
+        _showGroupHint(
             'I mezzi devono essere entro ${_kGroupRadiusMeters.toInt()} m l\'uno dall\'altro');
         return;
       }
     }
-    setState(() => _groupSelection.add(vehicle));
+    _groupHintTimer?.cancel();
+    setState(() {
+      _groupHint = null;
+      _groupSelection.add(vehicle);
+    });
   }
 
   /// Conferma la prenotazione multipla dei mezzi selezionati.
@@ -1228,13 +1249,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               onClear: _clearDestination,
             ),
           ),
-        // UT.16 — Banner "tocca i mezzi" durante la selezione gruppo.
+        // UT.16 — Durante la selezione gruppo: banner "tocca i mezzi"; quando
+        // c'è un vincolo violato mostra il messaggio nello stile del banner zona.
         if (_groupMode && _activeGroup == null)
           Positioned(
             left: 12,
             right: 70,
             top: _currentForbiddenZone != null ? 66 : 16,
-            child: const _GroupSelectBanner(),
+            child: _groupHint != null
+                ? _GroupHintBanner(message: _groupHint!)
+                : const _GroupSelectBanner(),
           ),
         // UT.16 — Pannello selezione gruppo: conteggio + conferma/annulla.
         if (_groupMode && _activeGroup == null)
@@ -2948,6 +2972,46 @@ class _GroupSelectBanner extends StatelessWidget {
             child: Text(
               'bici/monopattini, entro 100 m',
               maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.barlow(fontSize: 13, color: _kText),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── UT.16 · Messaggio contestuale selezione gruppo (stile banner zona) ─────
+class _GroupHintBanner extends StatelessWidget {
+  const _GroupHintBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: _kSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _kAccent),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x73000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: _kAccent, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: GoogleFonts.barlow(fontSize: 13, color: _kText),
             ),

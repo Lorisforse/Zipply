@@ -15,6 +15,7 @@ import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/ziply_tile_layer.dart';
+import 'package:ziply_app/presentation/mobile/ride/group_ride_summary_screen.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 import 'package:ziply_app/services/ride_service.dart';
 
@@ -118,9 +119,15 @@ class _GroupRideScreenState extends State<GroupRideScreen> {
     try {
       final summary = await _rideService.endGroup(widget.groupId);
       if (!mounted) return;
-      await _showSummaryDialog(summary);
-      if (!mounted) return;
-      navigator.pop();
+      await GroupRideSummaryScreen.show(
+        navigator.context,
+        groupId: widget.groupId,
+        vehicles: widget.vehicles,
+        durationMinutes: summary.durationMinutes,
+        cost: summary.totalCost,
+        co2Grams: summary.co2SavedGrams,
+        appliedDiscount: summary.appliedDiscount,
+      );
     } on SessionExpiredException catch (e) {
       if (!mounted) return;
       setState(() => _ending = false);
@@ -138,74 +145,6 @@ class _GroupRideScreenState extends State<GroupRideScreen> {
             style: GoogleFonts.barlow(fontSize: 14, color: _kText)),
       ));
     }
-  }
-
-  Future<void> _showSummaryDialog(RideEndSummary summary) {
-    return showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: _kSurface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        title: Text(
-          'Noleggio di gruppo concluso',
-          style: GoogleFonts.barlowCondensed(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: _kText,
-          ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _summaryRow('Mezzi', '${widget.vehicles.length}'),
-            _summaryRow('Durata', '${summary.durationMinutes} min'),
-            _summaryRow('CO₂ risparmiata',
-                '${summary.co2SavedGrams.toStringAsFixed(0)} g'),
-            if (summary.appliedDiscount > 0)
-              _summaryRow('Sconto', '−${_euro(summary.appliedDiscount)}'),
-            const SizedBox(height: 4),
-            _summaryRow('Totale', _euro(summary.totalCost), highlight: true),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(
-              'CHIUDI',
-              style: GoogleFonts.barlowCondensed(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-                color: _kAccent,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryRow(String label, String value, {bool highlight = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: GoogleFonts.barlow(fontSize: 14, color: _kDim)),
-          Text(
-            value,
-            style: GoogleFonts.barlowCondensed(
-              fontSize: highlight ? 20 : 16,
-              fontWeight: FontWeight.w700,
-              color: highlight ? _kAccent : _kText,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   @override

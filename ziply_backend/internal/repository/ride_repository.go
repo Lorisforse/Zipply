@@ -530,7 +530,11 @@ func (r *RideRepository) EndGroup(ctx context.Context, userID, groupID string) (
 		if err != nil {
 			return nil, err
 		}
-		total.DurationMinutes += s.DurationMinutes
+		// Le corse del gruppo condividono il timer: costo e CO2 si sommano (un
+		// addebito per mezzo), la durata NO (è la stessa per tutte → max).
+		if s.DurationMinutes > total.DurationMinutes {
+			total.DurationMinutes = s.DurationMinutes
+		}
 		total.TotalCost += s.TotalCost
 		total.Co2SavedGrams += s.Co2SavedGrams
 		total.AppliedDiscount += s.AppliedDiscount
