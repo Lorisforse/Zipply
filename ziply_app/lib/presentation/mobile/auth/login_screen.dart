@@ -12,7 +12,7 @@ const Color _kText = Color(0xFFF5F5F5);
 const Color _kDim = Color(0xFF777777);
 const Color _kAccent = Color(0xFFF69659);
 
-// ── Text styles ───────────────────────────────────────────────────────────────
+// ── Text styles ──────────────────────────────────────────────────────────────
 TextStyle _cond(
         {double size = 14,
         FontWeight w = FontWeight.w700,
