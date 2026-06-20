@@ -3,10 +3,12 @@
 // corsa di gruppo (più mezzi, costo/CO2 aggregati, durata condivisa).
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/services/payment_method_service.dart';
+import 'package:ziply_app/services/payment_link_service.dart';
 
 const Color _kBg = Color(0xFF1A1A1A);
 const Color _kSurface = Color(0xFF252525);
@@ -26,6 +28,7 @@ class GroupRideSummaryScreen extends StatefulWidget {
     required this.durationMinutes,
     required this.cost,
     required this.co2Grams,
+    required this.rideIds,
     this.appliedDiscount = 0,
   });
 
@@ -35,6 +38,7 @@ class GroupRideSummaryScreen extends StatefulWidget {
   final double cost;
   final double co2Grams;
   final double appliedDiscount;
+  final List<String> rideIds;
 
   /// Apre la schermata sostituendo la rotta corrente (come [RideSummaryScreen]),
   /// con la stessa transizione dissolvenza + scorrimento.
@@ -45,6 +49,7 @@ class GroupRideSummaryScreen extends StatefulWidget {
     required int durationMinutes,
     required double cost,
     required double co2Grams,
+    required List<String> rideIds,
     double appliedDiscount = 0,
   }) {
     return Navigator.of(context).pushReplacement(
@@ -57,6 +62,7 @@ class GroupRideSummaryScreen extends StatefulWidget {
           durationMinutes: durationMinutes,
           cost: cost,
           co2Grams: co2Grams,
+          rideIds: rideIds,
           appliedDiscount: appliedDiscount,
         ),
         transitionsBuilder: (context, animation, _, child) {
@@ -84,6 +90,7 @@ class GroupRideSummaryScreen extends StatefulWidget {
 class _GroupRideSummaryScreenState extends State<GroupRideSummaryScreen> {
   final PaymentMethodService _paymentService = PaymentMethodService();
   String? _cardLastFour;
+  bool _generating = false;
 
   @override
   void initState() {
@@ -102,6 +109,116 @@ class _GroupRideSummaryScreenState extends State<GroupRideSummaryScreen> {
       setState(() => _cardLastFour = card.cardLastFour);
     } on Exception {
       // Dettaglio non essenziale: lasciamo "—".
+    }
+  }
+
+  Future<void> _onGeneratePaymentLink() async {
+    if (_generating) return;
+    setState(() => _generating = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final plService = PaymentLinkService();
+      final pl = await plService.generatePaymentLink(widget.rideIds.first);
+      if (!mounted) return;
+      setState(() => _generating = false);
+      
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            backgroundColor: _kSurface,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+            title: Text(
+              'DIVIDI COSTO CORSA',
+              style: GoogleFonts.barlowCondensed(
+                fontWeight: FontWeight.w700,
+                color: _kAccent,
+                fontSize: 22,
+              ),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Condividi questo codice con i partecipanti per dividere il costo in parti uguali:',
+                  style: GoogleFonts.barlow(fontSize: 14.5, color: _kText),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _kSurface2,
+                    border: Border.all(color: _kBorder),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: SelectableText(
+                          pl.id,
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                            color: _kText,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.copy, color: _kAccent, size: 20),
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: pl.id));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              backgroundColor: _kSurface2,
+                              content: Text(
+                                'Codice copiato negli appunti!',
+                                style: GoogleFonts.barlow(color: _kText),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _DialogDetailRow(label: 'Quota a testa', value: '€ ${pl.amountPerHead.toStringAsFixed(2).replaceAll('.', ',')}'),
+                const SizedBox(height: 8),
+                _DialogDetailRow(label: 'Partecipanti', value: '${pl.participants}'),
+                const SizedBox(height: 8),
+                const _DialogDetailRow(label: 'Scadenza link', value: '10 minuti'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'CHIUDI',
+                  style: GoogleFonts.barlowCondensed(
+                    color: _kAccent,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _generating = false);
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: _kSurface,
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+            style: GoogleFonts.barlow(color: _kText),
+          ),
+        ),
+      );
     }
   }
 
@@ -183,30 +300,70 @@ class _GroupRideSummaryScreenState extends State<GroupRideSummaryScreen> {
                 border: Border(top: BorderSide(color: _kBorder)),
               ),
               padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-              child: SizedBox(
-                height: 54,
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  icon: const Icon(Icons.map_outlined, size: 19, color: _kBg),
-                  label: Text(
-                    'TORNA ALLA MAPPA',
-                    style: GoogleFonts.barlowCondensed(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
-                      color: _kBg,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: 50,
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _generating ? null : _onGeneratePaymentLink,
+                      icon: _generating
+                          ? const SizedBox(
+                              width: 19,
+                              height: 19,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: _kBg,
+                              ),
+                            )
+                          : const Icon(Icons.groups_2, size: 19, color: _kBg),
+                      label: Text(
+                        'DIVIDI COSTO CORSA',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 17.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1,
+                          color: _kBg,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _kAccent,
+                        foregroundColor: _kBg,
+                        disabledBackgroundColor: _kAccent.withOpacity(0.6),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
                     ),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _kAccent,
-                    foregroundColor: _kBg,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 50,
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: const Icon(Icons.map_outlined, size: 19, color: _kText),
+                      label: Text(
+                        'TORNA ALLA MAPPA',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 17.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1,
+                          color: _kText,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: _kBorder),
+                        foregroundColor: _kText,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
             ),
           ],
@@ -453,6 +610,30 @@ class _DetailRow extends StatelessWidget {
             fontWeight: FontWeight.w600,
             letterSpacing: 0.3,
             color: valueColor,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DialogDetailRow extends StatelessWidget {
+  const _DialogDetailRow({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: GoogleFonts.barlow(fontSize: 13, color: _kDim)),
+        Text(
+          value,
+          style: GoogleFonts.barlowCondensed(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: _kText,
           ),
         ),
       ],

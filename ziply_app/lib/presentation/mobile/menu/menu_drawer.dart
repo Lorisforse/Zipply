@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
 import 'package:ziply_app/presentation/mobile/payment/payment_methods_screen.dart';
+import 'package:ziply_app/presentation/mobile/payment/payment_share_screen.dart';
 import 'package:ziply_app/services/auth_service.dart';
+import 'package:ziply_app/services/payment_link_service.dart';
 
 // ── Palette ────────────────────────────────────────────────────────────────
 const Color _kBg      = Color(0xFF1A1A1A);
@@ -12,6 +14,7 @@ const Color _kBorder  = Color(0xFF333333);
 const Color _kText    = Color(0xFFF5F5F5);
 const Color _kDim     = Color(0xFF777777);
 const Color _kAccent  = Color(0xFFF69659);
+const Color _kGreen   = Color(0xFF5DCAA5);
 
 TextStyle _cond({double size = 14, FontWeight w = FontWeight.w700, Color c = _kText, double ls = 0}) =>
     GoogleFonts.barlowCondensed(fontSize: size, fontWeight: w, color: c, letterSpacing: ls);
@@ -52,6 +55,7 @@ class MenuDrawer extends StatefulWidget {
 class _MenuDrawerState extends State<MenuDrawer> {
   final AuthService _authService = AuthService();
   _Identity? _identity;
+  double _creditBalance = 0.0;
 
   @override
   void initState() {
@@ -59,13 +63,23 @@ class _MenuDrawerState extends State<MenuDrawer> {
     _loadIdentity();
   }
 
-  /// Decodifica localmente il payload del JWT per leggere email e ruolo, senza
-  /// chiamate di rete (il token è firmato lato server e già validato lì).
+  /// Decodifica localmente il payload del JWT per leggere email e ruolo, e carica il saldo crediti.
   Future<void> _loadIdentity() async {
     final token = await _authService.getToken();
     final identity = _decodeIdentity(token);
+    double balance = 0.0;
+    try {
+      if (token != null && token.isNotEmpty) {
+        balance = await PaymentLinkService().getCreditBalance();
+      }
+    } catch (_) {
+      // Ignora se fallisce (es. offline)
+    }
     if (!mounted) return;
-    setState(() => _identity = identity);
+    setState(() {
+      _identity = identity;
+      _creditBalance = balance;
+    });
   }
 
   _Identity? _decodeIdentity(String? token) {
@@ -94,6 +108,81 @@ class _MenuDrawerState extends State<MenuDrawer> {
     Scaffold.of(context).closeEndDrawer();
     navigator.push(
       MaterialPageRoute(builder: (_) => const PaymentMethodsScreen()),
+    );
+  }
+
+  /// Chiude il drawer e apre il dialogo per l'inserimento del link/codice quota condivisa.
+  void _openPayQuota() {
+    Scaffold.of(context).closeEndDrawer();
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF252525),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          title: Text(
+            'INSERISCI CODICE QUOTA',
+            style: _cond(size: 20, c: _kAccent),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Incolla il codice o il link di pagamento ricevuto per pagare la tua quota.',
+                style: _body(size: 13.5, c: _kText),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: controller,
+                style: _body(size: 15, c: _kText),
+                decoration: InputDecoration(
+                  hintText: 'es. ZP-XXXXX o l\'ID del link',
+                  hintStyle: _body(size: 14, c: _kDim),
+                  filled: true,
+                  fillColor: _kBg,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  enabledBorder: OutlineInputBorder(
+                    borderSide: const BorderSide(color: _kBorder),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderSide: const BorderSide(color: _kAccent),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: Text(
+                'ANNULLA',
+                style: _cond(size: 15, c: _kDim),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                final text = controller.text.trim();
+                Navigator.of(ctx).pop();
+                if (text.isNotEmpty) {
+                  var id = text;
+                  if (text.contains('payment-links/')) {
+                    id = text.split('payment-links/').last;
+                  }
+                  PaymentShareScreen.show(context, id);
+                }
+              },
+              child: Text(
+                'PROCEDI',
+                style: _cond(size: 15, c: _kAccent),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -181,7 +270,7 @@ class _MenuDrawerState extends State<MenuDrawer> {
                 splashRadius: 22,
               ),
             ),
-            _ProfileHeader(identity: _identity),
+            _ProfileHeader(identity: _identity, creditBalance: _creditBalance),
             const SizedBox(height: 6),
             Container(height: 1, color: _kBorder, margin: const EdgeInsets.symmetric(horizontal: 20)),
             const SizedBox(height: 6),
@@ -207,6 +296,11 @@ class _MenuDrawerState extends State<MenuDrawer> {
               icon: Icons.credit_card,
               label: 'Metodi di pagamento',
               onTap: _openPaymentMethods,
+            ),
+            _MenuItem(
+              icon: Icons.share,
+              label: 'Paga quota condivisa',
+              onTap: _openPayQuota,
             ),
             _MenuItem(
               icon: Icons.support_agent_outlined,
@@ -247,9 +341,10 @@ class _MenuDrawerState extends State<MenuDrawer> {
 
 // ── Header profilo (avatar iniziali + email + badge ruolo) ───────────────────
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.identity});
+  const _ProfileHeader({required this.identity, required this.creditBalance});
 
   final _Identity? identity;
+  final double creditBalance;
 
   @override
   Widget build(BuildContext context) {
@@ -280,19 +375,29 @@ class _ProfileHeader extends StatelessWidget {
                   style: _cond(size: 18, c: _kText, ls: 0.3),
                 ),
                 const SizedBox(height: 4),
-                if (id != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: _kAccent.withValues(alpha: 0.10),
-                      border: Border.all(color: _kAccent),
-                      borderRadius: BorderRadius.circular(2),
+                Row(
+                  children: [
+                    if (id != null) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _kAccent.withOpacity(0.10),
+                          border: Border.all(color: _kAccent),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        child: Text(
+                          id.ruolo.toUpperCase(),
+                          style: _cond(size: 10, w: FontWeight.w700, c: _kAccent, ls: 0.5),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Text(
+                      'Credito: € ${creditBalance.toStringAsFixed(2).replaceAll('.', ',')}',
+                      style: _cond(size: 12, c: _kGreen, w: FontWeight.w600),
                     ),
-                    child: Text(
-                      id.ruolo.toUpperCase(),
-                      style: _cond(size: 10, w: FontWeight.w700, c: _kAccent, ls: 0.5),
-                    ),
-                  ),
+                  ],
+                ),
               ],
             ),
           ),

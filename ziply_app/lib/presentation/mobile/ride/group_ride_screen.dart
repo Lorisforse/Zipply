@@ -126,6 +126,7 @@ class _GroupRideScreenState extends State<GroupRideScreen> {
         durationMinutes: summary.durationMinutes,
         cost: summary.totalCost,
         co2Grams: summary.co2SavedGrams,
+        rideIds: widget.rides.map((r) => r.id).toList(),
         appliedDiscount: summary.appliedDiscount,
       );
     } on SessionExpiredException catch (e) {

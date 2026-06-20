@@ -57,6 +57,11 @@ func main() {
 	discountUsecase := usecase.NewDiscountUsecase(discountRepo)
 	discountHandler := handler.NewDiscountHandler(discountUsecase)
 
+	// UT.23 — Link di pagamento e accredito credito.
+	paymentLinkRepo := repository.NewPaymentLinkRepository(pool)
+	paymentLinkUsecase := usecase.NewPaymentLinkUsecase(paymentLinkRepo)
+	paymentLinkHandler := handler.NewPaymentLinkHandler(paymentLinkUsecase)
+
 	// UT.07/03/08 — Percorso mezzo→destinazione via OpenRouteService, con stima
 	// costo e suggerimento tipologia inclusi nella risposta.
 	routeUsecase := usecase.NewRouteUsecase(vehicleRepo, forbiddenZoneRepo, ors.New(), discountRepo)
@@ -85,6 +90,12 @@ func main() {
 	mux.Handle("POST /payment-methods", middleware.JWTAuth(http.HandlerFunc(paymentMethodHandler.Create)))
 	mux.Handle("GET /payment-methods", middleware.JWTAuth(http.HandlerFunc(paymentMethodHandler.List)))
 	mux.Handle("DELETE /payment-methods/{id}", middleware.JWTAuth(http.HandlerFunc(paymentMethodHandler.Delete)))
+
+	// UT.23 — Link di pagamento e accredito credito
+	mux.Handle("POST /rides/{id}/payment-link", middleware.JWTAuth(http.HandlerFunc(paymentLinkHandler.Create)))
+	mux.Handle("GET /payment-links/{id}", middleware.JWTAuth(http.HandlerFunc(paymentLinkHandler.Get)))
+	mux.Handle("POST /payment-links/{id}/pay", middleware.JWTAuth(http.HandlerFunc(paymentLinkHandler.Pay)))
+	mux.Handle("GET /users/credit-balance", middleware.JWTAuth(http.HandlerFunc(paymentLinkHandler.GetCreditBalance)))
 
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
