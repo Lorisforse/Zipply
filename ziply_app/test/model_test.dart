@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ziply_app/data/models/multi_booking_model.dart';
 import 'package:ziply_app/data/models/ride_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
+import 'package:ziply_app/data/models/malfunction_report_model.dart';
 
 void main() {
   group('Model Tests', () {
@@ -69,6 +70,32 @@ void main() {
       expect(model.bookings.first.id, 'b-1');
       expect(model.bookings.first.vehicleId, 'v-1');
       expect(model.expiresAt, DateTime.parse('2026-06-19T12:15:00Z'));
+    });
+
+    test('MalfunctionReportModel fromJson test', () {
+      final json = {
+        'id': 'rep-123',
+        'user_id': 'usr-456',
+        'vehicle_id': 'veh-789',
+        'ride_id': 'ride-abc',
+        'problem_type': 'freni',
+        'description': 'I freni fischiano',
+        'attachment_urls': 'img1.png,img2.png',
+        'created_at': '2026-06-20T10:00:00Z',
+        'status': 'in_attesa',
+      };
+
+      final model = MalfunctionReportModel.fromJson(json);
+
+      expect(model.id, 'rep-123');
+      expect(model.userId, 'usr-456');
+      expect(model.vehicleId, 'veh-789');
+      expect(model.rideId, 'ride-abc');
+      expect(model.problemType, 'freni');
+      expect(model.description, 'I freni fischiano');
+      expect(model.attachmentUrls, 'img1.png,img2.png');
+      expect(model.createdAt, DateTime.parse('2026-06-20T10:00:00Z'));
+      expect(model.status, 'in_attesa');
     });
   });
 }

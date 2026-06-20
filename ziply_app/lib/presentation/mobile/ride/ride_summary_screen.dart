@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:ziply_app/data/models/ride_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
+import 'package:ziply_app/presentation/mobile/ride/malfunction_report_screen.dart';
 import 'package:ziply_app/services/payment_method_service.dart';
 
 // ── Palette (da Grafica/annullata-handoff, allineata a booking_cancelled) ──
@@ -251,6 +252,37 @@ class _RideSummaryScreenState extends State<RideSummaryScreen> {
                       ),
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 54,
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        MalfunctionReportScreen.show(
+                          context,
+                          rideId: widget.ride.id,
+                          vehicleId: widget.vehicle.id,
+                        );
+                      },
+                      icon: const Icon(Icons.warning_amber_outlined, size: 19, color: _kText),
+                      label: Text(
+                        'SEGNALA MALFUNZIONAMENTO',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1,
+                          color: _kText,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: _kBorder),
+                        foregroundColor: _kText,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -287,9 +319,9 @@ class _SuccessBadge extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _kGreen.withValues(alpha: 0.08),
+                color: _kGreen.withOpacity(0.08),
                 border: Border.all(
-                  color: _kGreen.withValues(alpha: 0.9),
+                  color: _kGreen.withOpacity(0.9),
                   width: 2,
                 ),
               ),
@@ -431,8 +463,8 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(7, 4, 7, 3),
       decoration: BoxDecoration(
-        color: _kGreen.withValues(alpha: 0.10),
-        border: Border.all(color: _kGreen.withValues(alpha: 0.55)),
+        color: _kGreen.withOpacity(0.10),
+        border: Border.all(color: _kGreen.withOpacity(0.55)),
         borderRadius: BorderRadius.circular(2),
       ),
       child: Text(

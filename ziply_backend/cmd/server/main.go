@@ -62,6 +62,11 @@ func main() {
 	paymentLinkUsecase := usecase.NewPaymentLinkUsecase(paymentLinkRepo)
 	paymentLinkHandler := handler.NewPaymentLinkHandler(paymentLinkUsecase)
 
+	// UT.11 — Segnalazione malfunzionamento.
+	malfunctionRepo := repository.NewMalfunctionReportRepository(pool)
+	malfunctionUsecase := usecase.NewMalfunctionReportUsecase(malfunctionRepo)
+	malfunctionHandler := handler.NewMalfunctionReportHandler(malfunctionUsecase)
+
 	// UT.07/03/08 — Percorso mezzo→destinazione via OpenRouteService, con stima
 	// costo e suggerimento tipologia inclusi nella risposta.
 	routeUsecase := usecase.NewRouteUsecase(vehicleRepo, forbiddenZoneRepo, ors.New(), discountRepo)
@@ -98,6 +103,9 @@ func main() {
 	mux.Handle("GET /payment-links/{id}", middleware.JWTAuth(http.HandlerFunc(paymentLinkHandler.Get)))
 	mux.Handle("POST /payment-links/{id}/pay", middleware.JWTAuth(http.HandlerFunc(paymentLinkHandler.Pay)))
 	mux.Handle("GET /users/credit-balance", middleware.JWTAuth(http.HandlerFunc(paymentLinkHandler.GetCreditBalance)))
+
+	// UT.11 — Segnalazione malfunzionamento
+	mux.Handle("POST /malfunction-reports", middleware.JWTAuth(http.HandlerFunc(malfunctionHandler.Create)))
 
 	port := os.Getenv("SERVER_PORT")
 	if port == "" {
