@@ -4,19 +4,25 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:ziply_app/presentation/mobile/map/map_screen.dart';
 import 'package:ziply_app/services/auth_service.dart';
 
-// ── Palette ──────────────────────────────────────────────────────────────────
-const Color _kBg      = Color(0xFF1A1A1A);
+// ── Palette ─────────────────────────────────────────────────────────────────
+const Color _kBg = Color(0xFF1A1A1A);
 const Color _kSurface = Color(0xFF252525);
-const Color _kBorder  = Color(0xFF333333);
-const Color _kText    = Color(0xFFF5F5F5);
-const Color _kDim     = Color(0xFF777777);
-const Color _kAccent  = Color(0xFFF69659);
+const Color _kBorder = Color(0xFF333333);
+const Color _kText = Color(0xFFF5F5F5);
+const Color _kDim = Color(0xFF777777);
+const Color _kAccent = Color(0xFFF69659);
 
 // ── Text styles ───────────────────────────────────────────────────────────────
-TextStyle _cond({double size = 14, FontWeight w = FontWeight.w700, Color c = _kText, double ls = 0}) =>
-    GoogleFonts.barlowCondensed(fontSize: size, fontWeight: w, color: c, letterSpacing: ls);
+TextStyle _cond(
+        {double size = 14,
+        FontWeight w = FontWeight.w700,
+        Color c = _kText,
+        double ls = 0}) =>
+    GoogleFonts.barlowCondensed(
+        fontSize: size, fontWeight: w, color: c, letterSpacing: ls);
 
-TextStyle _body({double size = 15, FontWeight w = FontWeight.w400, Color c = _kText}) =>
+TextStyle _body(
+        {double size = 15, FontWeight w = FontWeight.w400, Color c = _kText}) =>
     GoogleFonts.barlow(fontSize: size, fontWeight: w, color: c);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,13 +35,13 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLogin = true;
-  bool _showPass     = false;
-  bool _showPassConf = false;   // fix #4 – toggle conferma password
+  bool _showPass = false;
+  bool _showPassConf = false; // fix #4 – toggle conferma password
 
-  final _nome     = TextEditingController();
-  final _cognome  = TextEditingController();
-  final _email    = TextEditingController();
-  final _pass     = TextEditingController();
+  final _nome = TextEditingController();
+  final _cognome = TextEditingController();
+  final _email = TextEditingController();
+  final _pass = TextEditingController();
   final _passConf = TextEditingController(); // fix #4 – conferma password
 
   final AuthService _authService = AuthService();
@@ -57,20 +63,21 @@ class _LoginScreenState extends State<LoginScreen> {
   void _switchMode(bool login) {
     if (_isLogin == login || _isLoading) return;
     setState(() {
-      _isLogin       = login;
-      _errors        = {};
-      _apiError      = null;
-      _showPass      = false;
-      _showPassConf  = false;
+      _isLogin = login;
+      _errors = {};
+      _apiError = null;
+      _showPass = false;
+      _showPassConf = false;
     });
   }
 
-  bool _emailValid(String s) => RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(s);
+  bool _emailValid(String s) =>
+      RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(s);
 
   Future<void> _submit() async {
     final e = <String, String?>{};
     if (!_isLogin) {
-      if (_nome.text.trim().isEmpty)    e['nome']    = '!';
+      if (_nome.text.trim().isEmpty) e['nome'] = '!';
       if (_cognome.text.trim().isEmpty) e['cognome'] = '!';
     }
     if (_email.text.trim().isEmpty) {
@@ -95,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() {
-      _errors   = e;
+      _errors = e;
       _apiError = null;
     });
     if (e.isNotEmpty) return;
@@ -119,14 +126,16 @@ class _LoginScreenState extends State<LoginScreen> {
     } on Exception catch (err) {
       debugPrint('auth failed: $err');
       if (!mounted) return;
-      setState(() => _apiError = err.toString().replaceFirst('Exception: ', ''));
+      setState(
+          () => _apiError = err.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _clearError(String key) {
-    if (_errors.containsKey(key)) setState(() => _errors = {..._errors, key: null});
+    if (_errors.containsKey(key))
+      setState(() => _errors = {..._errors, key: null});
   }
 
   // ── eye button helper ─────────────────────────────────────────────────────
@@ -184,8 +193,14 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.fromLTRB(24, 18, 24, 0),
             child: Row(
               children: [
-                _Tab(label: 'Accedi',     active: _isLogin,  onTap: () => _switchMode(true)),
-                _Tab(label: 'Registrati', active: !_isLogin, onTap: () => _switchMode(false)),
+                _Tab(
+                    label: 'Accedi',
+                    active: _isLogin,
+                    onTap: () => _switchMode(true)),
+                _Tab(
+                    label: 'Registrati',
+                    active: !_isLogin,
+                    onTap: () => _switchMode(false)),
               ],
             ),
           ),
@@ -247,12 +262,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   _Field(
                     label: 'Password',
                     controller: _pass,
-                    placeholder: _isLogin ? 'La tua password' : 'Almeno 8 caratteri',
+                    placeholder:
+                        _isLogin ? 'La tua password' : 'Almeno 8 caratteri',
                     obscure: !_showPass,
-                    autoComplete: _isLogin ? 'current-password' : 'new-password',
+                    autoComplete:
+                        _isLogin ? 'current-password' : 'new-password',
                     error: _errors['pass'],
                     onChanged: (_) => _clearError('pass'),
-                    trailing: _eyeBtn(_showPass, () => setState(() => _showPass = !_showPass)),
+                    trailing: _eyeBtn(_showPass,
+                        () => setState(() => _showPass = !_showPass)),
                   ),
 
                   // fix #4 – campo conferma password (solo registrazione)
@@ -334,15 +352,20 @@ class _LoginScreenState extends State<LoginScreen> {
                   Row(
                     children: [
                       const Expanded(
-                          child: Divider(color: _kBorder, thickness: 1, height: 1)),
+                          child: Divider(
+                              color: _kBorder, thickness: 1, height: 1)),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: Text('OPPURE',
                             style: _cond(
-                                size: 13, w: FontWeight.w600, c: _kDim, ls: 1.5)),
+                                size: 13,
+                                w: FontWeight.w600,
+                                c: _kDim,
+                                ls: 1.5)),
                       ),
                       const Expanded(
-                          child: Divider(color: _kBorder, thickness: 1, height: 1)),
+                          child: Divider(
+                              color: _kBorder, thickness: 1, height: 1)),
                     ],
                   ),
                   const SizedBox(height: 18),
@@ -367,7 +390,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(width: 10),
                           Text('CONTINUA CON GOOGLE',
                               style: _cond(
-                                  size: 16, w: FontWeight.w600, c: _kText, ls: 0.6)),
+                                  size: 16,
+                                  w: FontWeight.w600,
+                                  c: _kText,
+                                  ls: 0.6)),
                         ],
                       ),
                     ),
@@ -419,7 +445,8 @@ class _FullHero extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   'Muoviti. Ovunque.',
-                  style: _body(size: 13, c: Colors.white.withValues(alpha: 0.65)),
+                  style:
+                      _body(size: 13, c: Colors.white.withValues(alpha: 0.65)),
                 ),
                 Expanded(
                   child: Padding(
@@ -505,7 +532,10 @@ class _Field extends StatelessWidget {
         Text(
           label.toUpperCase(),
           style: _cond(
-              size: 13, w: FontWeight.w600, c: hasErr ? _kAccent : _kDim, ls: 1.2),
+              size: 13,
+              w: FontWeight.w600,
+              c: hasErr ? _kAccent : _kDim,
+              ls: 1.2),
         ),
         const SizedBox(height: 6),
         Container(
