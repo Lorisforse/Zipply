@@ -15,6 +15,7 @@ const expiryJobTimeout = 10 * time.Second
 type BookingRepository interface {
 	Create(ctx context.Context, userID, vehicleID, discountCode string, expiresAt time.Time) (*domain.Booking, error)
 	CreateMulti(ctx context.Context, userID string, vehicleIDs []string, expiresAt time.Time) ([]*domain.Booking, string, error)
+	CreateScheduled(ctx context.Context, userID, vehicleID string, scheduledStart, expiresAt time.Time) (*domain.Booking, float64, error)
 	Expire(ctx context.Context, bookingID, vehicleID string) error
 	Cancel(ctx context.Context, bookingID, userID string) error
 }
@@ -66,6 +67,29 @@ func (uc *BookingUsecase) CreateMulti(ctx context.Context, userID string, vehicl
 // solo su prenotazioni ancora 'attiva').
 func (uc *BookingUsecase) Cancel(ctx context.Context, userID, bookingID string) error {
 	return uc.bookings.Cancel(ctx, bookingID, userID)
+}
+
+// CreateScheduled crea una prenotazione anticipata (UT.19) per un mezzo che
+// sarà utilizzato a scheduledStart, entro una finestra di 15 min – 24 h.
+// Restituisce la prenotazione, la preautorizzazione forfettaria calcolata e
+// schedula automaticamente la scadenza a scheduledStart + 30 min.
+func (uc *BookingUsecase) CreateScheduled(ctx context.Context, userID, vehicleID string, scheduledStart time.Time) (*domain.Booking, float64, error) {
+	advance := time.Until(scheduledStart)
+	if advance < domain.MinScheduledAdvance {
+		return nil, 0, domain.ErrScheduledStartTooSoon
+	}
+	if advance > domain.MaxScheduledAdvance {
+		return nil, 0, domain.ErrScheduledStartTooFar
+	}
+
+	expiresAt := scheduledStart.Add(domain.ScheduledGracePeriod)
+	booking, preAuth, err := uc.bookings.CreateScheduled(ctx, userID, vehicleID, scheduledStart, expiresAt)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	uc.scheduleExpiry(booking)
+	return booking, preAuth, nil
 }
 
 // scheduleExpiry fires once the hold elapses and, if the booking is still

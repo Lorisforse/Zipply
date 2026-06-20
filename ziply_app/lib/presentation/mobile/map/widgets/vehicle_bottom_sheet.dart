@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
 import 'package:ziply_app/data/models/ride_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
+import 'package:ziply_app/presentation/mobile/booking/screens/scheduled_booking_screen.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/services/booking_service.dart';
 import 'package:ziply_app/services/discount_service.dart';
@@ -182,6 +183,20 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
 
     if (!mounted) return; // scheda già chiusa dall'utente durante la chiamata
     navigator.pop(result);
+  }
+
+  /// UT.19 — Apre la schermata di prenotazione anticipata e, al ritorno con
+  /// una prenotazione confermata, chiude la scheda restituendo il risultato.
+  Future<void> _bookScheduled() async {
+    final navigator = Navigator.of(context);
+    final booking = await Navigator.push<BookingModel>(
+      context,
+      MaterialPageRoute<BookingModel>(
+        builder: (_) => ScheduledBookingScreen(vehicle: widget.vehicle),
+      ),
+    );
+    if (booking == null || !mounted) return;
+    navigator.pop(VehicleBookingResult.success(booking));
   }
 
   /// UT.13 — Sblocca direttamente il mezzo (senza prenotare): via QR se la
@@ -424,6 +439,40 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                         ),
                 ),
               ),
+              // UT.19 — Prenotazione anticipata (solo bici e automobili).
+              if (widget.vehicle.kind == VehicleType.bike ||
+                  widget.vehicle.kind == VehicleType.car) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.center,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: busy ? null : _bookScheduled,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.event_available_outlined,
+                            size: 14,
+                            color: busy ? _kBorder : _kDim,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Prenota per un orario futuro',
+                            style: GoogleFonts.barlow(
+                              fontSize: 13,
+                              color: busy ? _kBorder : _kDim,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

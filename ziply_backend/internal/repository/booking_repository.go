@@ -244,6 +244,86 @@ func (r *BookingRepository) CreateMulti(ctx context.Context, userID string, vehi
 	return bookings, groupID, nil
 }
 
+// CreateScheduled crea una prenotazione anticipata (UT.19) in un'unica transazione.
+// Solo bici e automobili elettriche sono ammesse; il mezzo deve essere disponibile;
+// l'utente non deve avere prenotazioni attive. Il veicolo viene marcato 'prenotato'
+// immediatamente; la scadenza è scheduledStart + ScheduledGracePeriod (30 min).
+// Restituisce la prenotazione creata e la preautorizzazione calcolata.
+func (r *BookingRepository) CreateScheduled(ctx context.Context, userID, vehicleID string, scheduledStart, expiresAt time.Time) (*domain.Booking, float64, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer tx.Rollback(ctx)
+
+	// Blocca il veicolo e verifica tipologia + disponibilità.
+	var status, typeName string
+	var hourlyRate float64
+	err = tx.QueryRow(ctx,
+		`SELECT v.status, vt.nome, (vt.tariffa_al_minuto * 60)::float8
+		   FROM vehicles v
+		   JOIN vehicle_types vt ON vt.id = v.type_id
+		  WHERE v.id = $1 FOR UPDATE OF v`,
+		vehicleID,
+	).Scan(&status, &typeName, &hourlyRate)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, 0, domain.ErrVehicleNotAvailable
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Solo bici (Bicicletta) e auto (Automobile elettrica).
+	if typeName == "Monopattino elettrico" {
+		return nil, 0, domain.ErrVehicleTypeNotSchedulable
+	}
+	if status != "disponibile" {
+		return nil, 0, domain.ErrVehicleNotAvailable
+	}
+
+	// L'utente non deve avere prenotazioni attive non scadute.
+	var hasActive bool
+	if err = tx.QueryRow(ctx,
+		`SELECT EXISTS(
+			SELECT 1 FROM bookings
+			WHERE user_id = $1 AND status = 'attiva' AND expires_at > NOW()
+		)`, userID,
+	).Scan(&hasActive); err != nil {
+		return nil, 0, err
+	}
+	if hasActive {
+		return nil, 0, domain.ErrActiveBookingExists
+	}
+
+	// Calcola la preautorizzazione progressiva.
+	advanceHours := time.Until(scheduledStart).Hours()
+	preAuth := domain.ScheduledPreAuth(hourlyRate, advanceHours)
+
+	b := &domain.Booking{UserID: userID, VehicleID: vehicleID, ScheduledStart: &scheduledStart}
+	err = tx.QueryRow(ctx,
+		`INSERT INTO bookings
+		   (user_id, vehicle_id, expires_at, status, booking_type, scheduled_start)
+		 VALUES ($1, $2, $3, 'attiva', 'scheduled', $4)
+		 RETURNING id, created_at, expires_at, status`,
+		userID, vehicleID, expiresAt, scheduledStart,
+	).Scan(&b.ID, &b.CreatedAt, &b.ExpiresAt, &b.Status)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if _, err = tx.Exec(ctx,
+		`UPDATE vehicles SET status = 'prenotato', updated_at = NOW() WHERE id = $1`,
+		vehicleID,
+	); err != nil {
+		return nil, 0, err
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return nil, 0, err
+	}
+	return b, preAuth, nil
+}
+
 // haversineMeters restituisce la distanza in metri tra due coordinate geografiche.
 func haversineMeters(lat1, lng1, lat2, lng2 float64) float64 {
 	const earthRadiusM = 6371000.0

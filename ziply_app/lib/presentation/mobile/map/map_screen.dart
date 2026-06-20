@@ -2113,7 +2113,7 @@ class _BookingPanelState extends State<_BookingPanel> {
   @override
   void initState() {
     super.initState();
-    // Tick al secondo: il countdown è ricalcolato da expires_at del backend.
+    // Tick al secondo: aggiorna il countdown / lo stato del pulsante sblocco.
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       if (_remaining() <= Duration.zero) {
@@ -2132,7 +2132,8 @@ class _BookingPanelState extends State<_BookingPanel> {
   }
 
   // Usiamo .toLocal() per gestire correttamente expiresAt in UTC dal backend.
-  Duration _remaining() => widget.booking.expiresAt.toLocal().difference(DateTime.now());
+  Duration _remaining() =>
+      widget.booking.expiresAt.toLocal().difference(DateTime.now());
 
   String _format(Duration d) {
     final clamped = d.isNegative ? Duration.zero : d;
@@ -2141,11 +2142,41 @@ class _BookingPanelState extends State<_BookingPanel> {
     return '$m:$s';
   }
 
+  // UT.19 — per le prenotazioni programmate lo sblocco è abilitato solo quando
+  // mancano meno di 5 minuti all'orario schedulato (o dopo).
+  bool get _scheduledTimeReached {
+    final scheduled = widget.booking.scheduledStart;
+    if (scheduled == null) return true; // prenotazione immediata: sempre ok
+    return DateTime.now()
+        .isAfter(scheduled.toLocal().subtract(const Duration(minutes: 5)));
+  }
+
+  String _formatScheduledTime(DateTime dt) {
+    final local = dt.toLocal();
+    final now = DateTime.now();
+    final isToday = local.year == now.year &&
+        local.month == now.month &&
+        local.day == now.day;
+    final tomorrow = now.add(const Duration(days: 1));
+    final isTomorrow = local.year == tomorrow.year &&
+        local.month == tomorrow.month &&
+        local.day == tomorrow.day;
+    final timeStr =
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    if (isToday) return 'Oggi\n$timeStr';
+    if (isTomorrow) return 'Domani\n$timeStr';
+    return '${local.day.toString().padLeft(2, '0')}/'
+        '${local.month.toString().padLeft(2, '0')}\n$timeStr';
+  }
+
   @override
   Widget build(BuildContext context) {
     final remaining = _remaining();
     final expired = remaining <= Duration.zero;
     final title = widget.vehicle.type.isEmpty ? 'Mezzo' : widget.vehicle.type;
+    final isScheduled = widget.booking.isScheduled;
+    final canUnlock =
+        widget.canUnlockByProximity && !expired && _scheduledTimeReached;
 
     return Container(
       decoration: const BoxDecoration(
@@ -2175,7 +2206,9 @@ class _BookingPanelState extends State<_BookingPanel> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'PRENOTAZIONE ATTIVA',
+                          isScheduled
+                              ? 'PRENOTAZIONE PROGRAMMATA'
+                              : 'PRENOTAZIONE ATTIVA',
                           style: GoogleFonts.barlowCondensed(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -2197,29 +2230,59 @@ class _BookingPanelState extends State<_BookingPanel> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        expired ? 'SCADUTA' : 'SCADE TRA',
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1,
-                          color: _kDim,
+                  if (isScheduled)
+                    // UT.19 — mostra l'orario programmato al posto del countdown.
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          expired ? 'SCADUTA' : 'PROGRAMMATA PER',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1,
+                            color: _kDim,
+                          ),
                         ),
-                      ),
-                      Text(
-                        _format(remaining),
-                        style: GoogleFonts.barlowCondensed(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w700,
-                          height: 1,
-                          color: expired ? _kDim : _kAccent,
+                        Text(
+                          expired
+                              ? '—'
+                              : _formatScheduledTime(
+                                  widget.booking.scheduledStart!),
+                          textAlign: TextAlign.end,
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            height: 1.1,
+                            color: expired ? _kDim : _kAccent,
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    )
+                  else
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          expired ? 'SCADUTA' : 'SCADE TRA',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1,
+                            color: _kDim,
+                          ),
+                        ),
+                        Text(
+                          _format(remaining),
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 30,
+                            fontWeight: FontWeight.w700,
+                            height: 1,
+                            color: expired ? _kDim : _kAccent,
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
               if (widget.booking.appliedPromotion != null) ...[
@@ -2229,19 +2292,33 @@ class _BookingPanelState extends State<_BookingPanel> {
                   widget.booking.promotionPercentage ?? 0,
                 ),
               ],
+              // UT.19 — mostra preautorizzazione e nota finché l'orario non è
+              // raggiunto.
+              if (isScheduled &&
+                  !expired &&
+                  widget.booking.preAuthAmount != null) ...[
+                const SizedBox(height: 12),
+                _buildScheduledInfoBanner(
+                  widget.booking.preAuthAmount!,
+                  _scheduledTimeReached,
+                ),
+              ],
               const SizedBox(height: 14),
-              // UT.13 — Sblocco per prossimità: abilitato solo entro 50 m dal
-              // mezzo e finché la prenotazione non è scaduta.
+              // UT.13 — Sblocco per prossimità: per le prenotazioni immediate
+              // basta la prossimità; per quelle programmate serve anche che
+              // l'orario sia raggiunto (entro 5 min).
               _UnlockButton(
-                enabled: widget.canUnlockByProximity && !expired,
+                enabled: canUnlock,
                 loading: widget.unlocking,
                 onTap: widget.onUnlockProximity,
               ),
-              // Suggerimento quando si è ancora troppo lontani.
-              if (!expired && !widget.canUnlockByProximity) ...[
+              // Suggerimento contestuale.
+              if (!expired && !canUnlock) ...[
                 const SizedBox(height: 6),
                 Text(
-                  'Avvicinati al mezzo (entro 50 m) per sbloccarlo.',
+                  isScheduled && !_scheduledTimeReached
+                      ? 'Potrai sbloccare il mezzo 5 minuti prima dell\'orario programmato.'
+                      : 'Avvicinati al mezzo (entro 50 m) per sbloccarlo.',
                   style: GoogleFonts.barlow(
                     fontSize: 12.5,
                     height: 1.3,
@@ -2276,6 +2353,40 @@ class _BookingPanelState extends State<_BookingPanel> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // UT.19 — Banner preautorizzazione + stato "in attesa dell'orario programmato".
+  Widget _buildScheduledInfoBanner(double preAuth, bool timeReached) {
+    final amountStr = preAuth.toStringAsFixed(2).replaceAll('.', ',');
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: _kAccent.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: _kAccent.withOpacity(0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.event_available_outlined,
+              size: 16, color: _kAccent.withOpacity(0.8)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              timeReached
+                  ? 'È il momento: sblocca il mezzo! (preaut. mock € $amountStr)'
+                  : 'Preaut. mock € $amountStr — sblocco disponibile 5 min prima dell\'orario.',
+              style: GoogleFonts.barlow(
+                fontSize: 12.5,
+                height: 1.4,
+                color: _kAccent,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

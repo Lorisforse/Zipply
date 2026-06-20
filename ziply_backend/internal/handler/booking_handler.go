@@ -147,6 +147,78 @@ func (h *BookingHandler) CreateMulti(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, multiBookingResponse{GroupID: groupID, Bookings: items})
 }
 
+// createScheduledBookingRequest mirrors the JSON body of POST /bookings/scheduled (UT.19).
+type createScheduledBookingRequest struct {
+	VehicleID      string `json:"vehicle_id"`
+	ScheduledStart string `json:"scheduled_start"` // RFC3339 UTC
+}
+
+// scheduledBookingResponse is the JSON shape of a created scheduled booking.
+type scheduledBookingResponse struct {
+	Booking      scheduledBookingItem `json:"booking"`
+	PreAuthAmount float64             `json:"pre_auth_amount"`
+}
+
+type scheduledBookingItem struct {
+	ID             string `json:"id"`
+	VehicleID      string `json:"vehicle_id"`
+	ScheduledStart string `json:"scheduled_start"`
+	ExpiresAt      string `json:"expires_at"`
+}
+
+// CreateScheduled handles POST /bookings/scheduled (UT.19): prenotazione anticipata
+// (solo bici/auto, max 24h prima). Calcola la preautorizzazione forfettaria progressiva
+// e restituisce l'orario programmato unitamente all'importo da preautorizzare (mock).
+func (h *BookingHandler) CreateScheduled(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.CtxUserID).(string)
+	if !ok || userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token non valido"})
+		return
+	}
+
+	var req createScheduledBookingRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.VehicleID == "" || req.ScheduledStart == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Dati non validi"})
+		return
+	}
+
+	scheduledStart, err := time.Parse(time.RFC3339, req.ScheduledStart)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "scheduled_start non valido (atteso RFC3339)"})
+		return
+	}
+
+	booking, preAuth, err := h.bookings.CreateScheduled(r.Context(), userID, req.VehicleID, scheduledStart)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrVehicleNotAvailable):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "mezzo non disponibile"})
+		case errors.Is(err, domain.ErrActiveBookingExists):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "hai già una prenotazione attiva"})
+		case errors.Is(err, domain.ErrVehicleTypeNotSchedulable):
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "la prenotazione anticipata è disponibile solo per bici e automobili"})
+		case errors.Is(err, domain.ErrScheduledStartTooSoon):
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "l'orario deve essere almeno 15 minuti nel futuro"})
+		case errors.Is(err, domain.ErrScheduledStartTooFar):
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "la prenotazione anticipata è possibile fino a 24 ore in anticipo"})
+		default:
+			log.Printf("[BOOKINGS] create scheduled failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, scheduledBookingResponse{
+		Booking: scheduledBookingItem{
+			ID:             booking.ID,
+			VehicleID:      booking.VehicleID,
+			ScheduledStart: booking.ScheduledStart.UTC().Format(time.RFC3339),
+			ExpiresAt:      booking.ExpiresAt.UTC().Format(time.RFC3339),
+		},
+		PreAuthAmount: preAuth,
+	})
+}
+
 // Cancel handles POST /bookings/{id}/cancel, annullando la prenotazione attiva
 // dell'utente autenticato e liberando il mezzo.
 func (h *BookingHandler) Cancel(w http.ResponseWriter, r *http.Request) {

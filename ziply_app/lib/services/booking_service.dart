@@ -110,6 +110,55 @@ class BookingService {
     );
   }
 
+  /// UT.19 — Prenotazione anticipata (POST /bookings/scheduled): riserva il
+  /// mezzo [vehicleId] per l'orario [scheduledStart] (solo bici/auto, tra 15 min
+  /// e 24 ore nel futuro). Restituisce il BookingModel con scheduledStart e
+  /// preAuthAmount valorizzati. Lancia [SessionExpiredException] sul 401; per
+  /// 409/422 propaga il messaggio del backend.
+  Future<BookingModel> createScheduledBooking(
+    String vehicleId,
+    DateTime scheduledStart,
+  ) async {
+    final token = await _storage.read(key: kTokenKey);
+
+    final http.Response response;
+    try {
+      response = await _client
+          .post(
+            Uri.parse('$kBaseUrl/bookings/scheduled'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'vehicle_id': vehicleId,
+              'scheduled_start': scheduledStart.toUtc().toIso8601String(),
+            }),
+          )
+          .timeout(_timeout);
+    } on http.ClientException {
+      throw Exception('Impossibile connettersi al server');
+    } on TimeoutException {
+      throw Exception('Impossibile connettersi al server');
+    }
+
+    if (response.statusCode == 401) throw const SessionExpiredException();
+
+    final body = _decodeBody(response.bodyBytes);
+
+    if (response.statusCode == 201) {
+      if (body != null) return BookingModel.fromScheduledJson(body);
+      throw Exception('Risposta del server non valida');
+    }
+
+    final serverMessage = body?['error'];
+    throw Exception(
+      serverMessage is String && serverMessage.isNotEmpty
+          ? serverMessage
+          : 'Impossibile completare la prenotazione anticipata',
+    );
+  }
+
   /// Annulla la prenotazione [bookingId] (POST /bookings/{id}/cancel).
   /// Non restituisce nulla in caso di successo; lancia [SessionExpiredException]
   /// sul 401, altrimenti una Exception con messaggio pronto per la UI.

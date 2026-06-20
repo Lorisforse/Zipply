@@ -87,6 +87,7 @@ func main() {
 	mux.Handle("POST /discount-codes/validate", middleware.JWTAuth(http.HandlerFunc(discountHandler.Validate)))
 	mux.Handle("POST /bookings", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Create)))
 	mux.Handle("POST /bookings/multi", middleware.JWTAuth(http.HandlerFunc(bookingHandler.CreateMulti)))
+	mux.Handle("POST /bookings/scheduled", middleware.JWTAuth(http.HandlerFunc(bookingHandler.CreateScheduled)))
 	mux.Handle("POST /bookings/{id}/cancel", middleware.JWTAuth(http.HandlerFunc(bookingHandler.Cancel)))
 	mux.Handle("POST /rides/unlock", middleware.JWTAuth(http.HandlerFunc(rideHandler.Unlock)))
 	mux.Handle("POST /rides/group/{id}/unlock", middleware.JWTAuth(http.HandlerFunc(rideHandler.UnlockGroup)))

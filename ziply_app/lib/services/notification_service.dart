@@ -60,9 +60,11 @@ class NotificationService {
         tag: 'Notifications');
   }
 
-  /// Schedula una notifica locale che avvisa della scadenza della prenotazione.
-  /// La notifica viene schedulata a 3 minuti prima di [booking.expiresAt].
-  /// Se mancano meno di 3 minuti alla scadenza, la schedulazione viene saltata.
+  /// Schedula una notifica locale per la prenotazione.
+  /// - Per prenotazioni immediate: avviso 3 min prima di [booking.expiresAt]
+  ///   ("Prenotazione in scadenza").
+  /// - Per prenotazioni anticipate (UT.19): avviso 3 min prima di
+  ///   [booking.scheduledStart] ("È quasi ora di usare il mezzo!").
   Future<void> scheduleBookingExpiryNotification(
     BookingModel booking,
     String vehicleName,
@@ -70,25 +72,37 @@ class NotificationService {
     if (kIsWeb) return;
     await init();
 
-    // Normalizziamo expiresAt in orario locale per un confronto corretto con
-    // DateTime.now() (che è sempre locale). Il backend può restituire un
-    // timestamp UTC (es. "2026-06-20T10:10:00Z") e senza .toLocal() il
-    // confronto potrebbe saltare la schedulazione.
-    final expiresLocal = booking.expiresAt.toLocal();
     final now = DateTime.now();
-    final alertTime = expiresLocal.subtract(const Duration(minutes: 3));
+    final String notifTitle;
+    final String notifBody;
+    final DateTime targetTime;
+
+    if (booking.isScheduled && booking.scheduledStart != null) {
+      // UT.19 — avvisa 3 min prima dell'orario programmato.
+      targetTime = booking.scheduledStart!.toLocal();
+      notifTitle = 'È quasi ora!';
+      notifBody =
+          'La tua $vehicleName prenotata è pronta tra pochi minuti.';
+    } else {
+      // Prenotazione immediata — avvisa 3 min prima della scadenza.
+      targetTime = booking.expiresAt.toLocal();
+      notifTitle = 'Prenotazione in scadenza';
+      notifBody = 'La tua prenotazione sta scadendo.';
+    }
+
+    final alertTime = targetTime.subtract(const Duration(minutes: 3));
 
     // Se l'orario di avviso è già trascorso, non scheduliamo
     if (alertTime.isBefore(now)) {
       zlog(
-        'Notifica scadenza saltata: mancano meno di 3 minuti a $expiresLocal',
+        'Notifica scadenza saltata: mancano meno di 3 minuti a $targetTime',
         tag: 'Notifications',
       );
       return;
     }
 
     zlog(
-      'Schedulo avviso scadenza per le $alertTime (scadenza: $expiresLocal) per veicolo $vehicleName',
+      'Schedulo avviso per le $alertTime (riferimento: $targetTime) per veicolo $vehicleName',
       tag: 'Notifications',
     );
 
@@ -133,9 +147,9 @@ class NotificationService {
 
     try {
       await _notificationsPlugin.zonedSchedule(
-        id: 100, // ID fisso per notifica prenotazione
-        title: 'Prenotazione in scadenza',
-        body: 'La tua prenotazione sta scadendo.',
+        id: 100,
+        title: notifTitle,
+        body: notifBody,
         scheduledDate: tzAlertTime,
         notificationDetails: details,
         androidScheduleMode: scheduleMode,
