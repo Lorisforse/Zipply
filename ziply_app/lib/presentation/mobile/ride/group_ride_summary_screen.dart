@@ -125,6 +125,7 @@ class _GroupRideSummaryScreenState extends State<GroupRideSummaryScreen> {
       showDialog(
         context: context,
         builder: (context) {
+          final shareUrl = pl.link ?? '';
           return AlertDialog(
             backgroundColor: _kSurface,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
@@ -141,7 +142,7 @@ class _GroupRideSummaryScreenState extends State<GroupRideSummaryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Condividi questo codice con i partecipanti per dividere il costo in parti uguali:',
+                  'Condividi questo link con i partecipanti per dividere il costo in parti uguali:',
                   style: GoogleFonts.barlow(fontSize: 14.5, color: _kText),
                 ),
                 const SizedBox(height: 16),
@@ -155,25 +156,26 @@ class _GroupRideSummaryScreenState extends State<GroupRideSummaryScreen> {
                   child: Row(
                     children: [
                       Expanded(
-                        child: SelectableText(
-                          pl.id,
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
+                        child: Text(
+                          shareUrl,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.barlow(
+                            fontSize: 14,
                             color: _kText,
                           ),
                         ),
                       ),
+                      const SizedBox(width: 8),
                       IconButton(
                         icon: const Icon(Icons.copy, color: _kAccent, size: 20),
                         onPressed: () {
-                          Clipboard.setData(ClipboardData(text: pl.id));
+                          Clipboard.setData(ClipboardData(text: shareUrl));
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               backgroundColor: _kSurface2,
                               content: Text(
-                                'Codice copiato negli appunti!',
+                                'Link copiato negli appunti!',
                                 style: GoogleFonts.barlow(color: _kText),
                               ),
                             ),
@@ -193,11 +195,35 @@ class _GroupRideSummaryScreenState extends State<GroupRideSummaryScreen> {
             ),
             actions: [
               TextButton(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(
+                    text: 'Usa questo link per pagare la tua quota Ziply: $shareUrl',
+                  ));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      backgroundColor: _kSurface2,
+                      content: Text(
+                        'Messaggio di condivisione copiato!',
+                        style: GoogleFonts.barlow(color: _kText),
+                      ),
+                    ),
+                  );
+                },
+                child: Text(
+                  'CONDIVIDI',
+                  style: GoogleFonts.barlowCondensed(
+                    color: _kAccent,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              TextButton(
                 onPressed: () => Navigator.of(context).pop(),
                 child: Text(
                   'CHIUDI',
                   style: GoogleFonts.barlowCondensed(
-                    color: _kAccent,
+                    color: _kDim,
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
                   ),
@@ -399,9 +425,9 @@ class _SuccessBadge extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _kGreen.withValues(alpha: 0.08),
+                color: _kGreen.withOpacity(0.08),
                 border: Border.all(
-                  color: _kGreen.withValues(alpha: 0.9),
+                  color: _kGreen.withOpacity(0.9),
                   width: 2,
                 ),
               ),
@@ -568,8 +594,8 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(7, 4, 7, 3),
       decoration: BoxDecoration(
-        color: _kGreen.withValues(alpha: 0.10),
-        border: Border.all(color: _kGreen.withValues(alpha: 0.55)),
+        color: _kGreen.withOpacity(0.10),
+        border: Border.all(color: _kGreen.withOpacity(0.55)),
         borderRadius: BorderRadius.circular(2),
       ),
       child: Text(

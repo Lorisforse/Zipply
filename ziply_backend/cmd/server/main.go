@@ -73,6 +73,8 @@ func main() {
 	mux.HandleFunc("POST /auth/register", authHandler.Register)
 	mux.HandleFunc("POST /auth/login", authHandler.Login)
 	mux.HandleFunc("GET /forbidden-zones", forbiddenZoneHandler.List)
+	mux.HandleFunc("GET /payment-links/{id}/pay-web", paymentLinkHandler.ShowPayWeb)
+	mux.HandleFunc("POST /payment-links/{id}/pay-web", paymentLinkHandler.ProcessPayWeb)
 
 	// Authenticated routes (JWT Bearer).
 	mux.Handle("GET /vehicles", middleware.JWTAuth(http.HandlerFunc(vehicleHandler.List)))
