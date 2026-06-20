@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
@@ -8,12 +6,12 @@ import 'package:ziply_app/services/booking_service.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 
 // ── Palette ─────────────────────────────────────────────────────────────────
-const Color _kBg      = Color(0xFF1A1A1A);
+const Color _kBg = Color(0xFF1A1A1A);
 const Color _kSurface = Color(0xFF252525);
-const Color _kBorder  = Color(0xFF333333);
-const Color _kText    = Color(0xFFF5F5F5);
-const Color _kDim     = Color(0xFF777777);
-const Color _kAccent  = Color(0xFFF69659);
+const Color _kBorder = Color(0xFF333333);
+const Color _kText = Color(0xFFF5F5F5);
+const Color _kDim = Color(0xFF777777);
+const Color _kAccent = Color(0xFFF69659);
 
 /// UT.19 — Schermata di selezione data/ora e conferma della prenotazione
 /// anticipata. Accessibile solo per bici e automobili elettriche.
@@ -46,7 +44,8 @@ class _ScheduledBookingScreenState extends State<ScheduledBookingScreen> {
   // ── Pre-auth progressiva (formula client-side = server-side) ──────────────
 
   double _preAuthFor(DateTime scheduledStart) {
-    final advanceHours = scheduledStart.difference(DateTime.now()).inMinutes / 60.0;
+    final advanceHours =
+        scheduledStart.difference(DateTime.now()).inMinutes / 60.0;
     final amount = widget.vehicle.hourlyRate * 0.5 * (1 + advanceHours / 24);
     return (amount * 100).roundToDouble() / 100;
   }
@@ -76,7 +75,11 @@ class _ScheduledBookingScreenState extends State<ScheduledBookingScreen> {
     if (time == null || !mounted) return;
 
     final picked = DateTime(
-      date.year, date.month, date.day, time.hour, time.minute,
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
     );
 
     setState(() {
@@ -237,8 +240,8 @@ class _ScheduledBookingScreenState extends State<ScheduledBookingScreen> {
               GestureDetector(
                 onTap: _confirming ? null : _pickDateTime,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
                   decoration: BoxDecoration(
                     color: _kSurface,
                     borderRadius: BorderRadius.circular(6),
@@ -255,7 +258,9 @@ class _ScheduledBookingScreenState extends State<ScheduledBookingScreen> {
                       ),
                       const SizedBox(width: 10),
                       Text(
-                        dt != null ? _formatDateTime(dt) : 'Seleziona data e ora',
+                        dt != null
+                            ? _formatDateTime(dt)
+                            : 'Seleziona data e ora',
                         style: GoogleFonts.barlowCondensed(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
@@ -378,8 +383,7 @@ class _PreAuthBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final amountStr =
-        preAuth.toStringAsFixed(2).replaceAll('.', ',');
+    final amountStr = preAuth.toStringAsFixed(2).replaceAll('.', ',');
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -422,7 +426,8 @@ class _PreAuthBox extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             'Importo calcolato in base all\'anticipo. Verrà liberato al momento dell\'utilizzo.',
-            style: GoogleFonts.barlow(fontSize: 12.5, height: 1.4, color: _kDim),
+            style:
+                GoogleFonts.barlow(fontSize: 12.5, height: 1.4, color: _kDim),
           ),
         ],
       ),
