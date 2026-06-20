@@ -10,6 +10,7 @@ import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/services/booking_service.dart';
 import 'package:ziply_app/services/discount_service.dart';
 import 'package:ziply_app/services/ride_service.dart';
+import 'package:ziply_app/services/subscription_service.dart';
 
 // ── Palette (da Grafica/mappa-handoff) ─────────────────────────────────────
 const Color _kBg      = Color(0xFF1A1A1A);
@@ -106,9 +107,31 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
   // UT.09 — Codice sconto inserito in conferma prenotazione.
   final TextEditingController _discountController = TextEditingController();
   bool _validatingDiscount = false;
-  DiscountValidation? _validDiscount; // sconto verificato e applicabile
-  String? _discountError; // messaggio di errore della verifica
-  bool _showDiscountInput = false; // controlla se il campo sconto a scomparsa è visibile
+  DiscountValidation? _validDiscount;
+  String? _discountError;
+  bool _showDiscountInput = false;
+
+  // UT.22 — abbonamento attivo per la tipologia di questo mezzo.
+  bool _subscriptionActive = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSubscription();
+  }
+
+  Future<void> _checkSubscription() async {
+    try {
+      final result = await SubscriptionService().fetchAll();
+      if (!mounted) return;
+      final hasActive = result.subscriptions.any(
+        (s) => s.vehicleTypeName == widget.vehicle.type && s.isActive,
+      );
+      setState(() => _subscriptionActive = hasActive);
+    } catch (_) {
+      // Non bloccante: se fallisce si mostra la tariffa normale.
+    }
+  }
 
   @override
   void dispose() {
@@ -297,8 +320,9 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                   Expanded(
                     child: _Metric(
                       label: 'TARIFFA',
-                      value: rateText,
-                      secondary: 'al minuto',
+                      value: _subscriptionActive ? 'GRATUITA' : rateText,
+                      secondary: _subscriptionActive ? 'abbonamento attivo' : 'al minuto',
+                      valueColor: _subscriptionActive ? _kGreen : null,
                     ),
                   ),
                   Expanded(
@@ -310,6 +334,31 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                   ),
                 ],
               ),
+              // UT.22 — banner abbonamento attivo.
+              if (_subscriptionActive) ...[
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _kGreen.withOpacity(0.08),
+                    border: Border.all(color: _kGreen.withOpacity(0.5)),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.workspace_premium_outlined, size: 16, color: _kGreen),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Hai un abbonamento attivo per questa tipologia — il noleggio sarà gratuito.',
+                          style: GoogleFonts.barlow(fontSize: 12.5, color: _kGreen, height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               // UT.13 — Sblocco + quadratino sconto affiancati.
               Row(
@@ -478,11 +527,12 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
 
 // ── Blocco metrica: etichetta + valore + secondario ────────────────────────
 class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value, this.secondary});
+  const _Metric({required this.label, required this.value, this.secondary, this.valueColor});
 
   final String label;
   final String value;
   final String? secondary;
+  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
@@ -504,7 +554,7 @@ class _Metric extends StatelessWidget {
           style: GoogleFonts.barlowCondensed(
             fontSize: 24,
             fontWeight: FontWeight.w700,
-            color: _kText,
+            color: valueColor ?? _kText,
           ),
         ),
         if (secondary != null) ...[

@@ -41,12 +41,14 @@ const freeRideThresholdSeconds = 20
 
 // RideSummary raccoglie i valori di addebito calcolati al termine di una corsa.
 // TotalCost è già al netto dell'eventuale sconto; AppliedDiscount è l'importo
-// scontato (0 se nessuno sconto, UT.09).
+// scontato (0 se nessuno sconto, UT.09). SubscriptionApplied è true quando il
+// costo è azzerato da un abbonamento attivo (UT.22).
 type RideSummary struct {
-	DurationMinutes int
-	TotalCost       float64
-	Co2SavedGrams   float64
-	AppliedDiscount float64
+	DurationMinutes      int
+	TotalCost            float64
+	Co2SavedGrams        float64
+	AppliedDiscount      float64
+	SubscriptionApplied  bool
 }
 
 // ChargedMinutes applica la regola di addebito a scatti di minuto: nessun

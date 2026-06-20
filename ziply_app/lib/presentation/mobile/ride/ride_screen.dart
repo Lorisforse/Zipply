@@ -18,6 +18,7 @@ import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/presentation/mobile/ride/ride_summary_screen.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 import 'package:ziply_app/services/ride_service.dart';
+import 'package:ziply_app/services/subscription_service.dart';
 
 // ── Palette (da Grafica/noleggio-attivo-handoff) ───────────────────────────
 const Color _kBg = Color(0xFF1A1A1A);
@@ -138,15 +139,36 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
   int _accumulatedActiveSeconds = 0;
   int _accumulatedPauseSeconds = 0;
 
+  // UT.22 — abbonamento attivo per questa tipologia di mezzo.
+  bool _subscriptionActive = false;
+  bool _loadingSub = true;
+
   @override
   void initState() {
     super.initState();
     _currentStatus = widget.ride.status;
     _stateEntryTime = widget.ride.startedAt;
-    // Tick al secondo: timer e costo sono ricalcolati.
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() {});
     });
+    _checkSubscription();
+  }
+
+  Future<void> _checkSubscription() async {
+    try {
+      final result = await SubscriptionService().fetchAll();
+      if (!mounted) return;
+      final vehicleTypeName = widget.vehicle.type;
+      final hasActive = result.subscriptions.any(
+        (s) => s.vehicleTypeName == vehicleTypeName && s.isActive,
+      );
+      setState(() {
+        _subscriptionActive = hasActive;
+        _loadingSub = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingSub = false);
+    }
   }
 
   @override
@@ -291,6 +313,7 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
         duration: frozenDuration,
         cost: summary.totalCost,
         appliedDiscount: summary.appliedDiscount,
+        subscriptionApplied: summary.subscriptionApplied,
       );
     } on SessionExpiredException catch (e) {
       if (!mounted) return;
@@ -343,7 +366,7 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Riga stato: pallino pulsante + "NOLEGGIO IN CORSO" / "NOLEGGIO IN PAUSA" + tariffa.
+              // Riga stato: pallino + label + tariffa (o badge abbonamento).
               Row(
                 children: [
                   const _PulseDot(),
@@ -358,10 +381,29 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                     ),
                   ),
                   const Spacer(),
-                  Text(
-                    'tariffa ${_euro(_ratePerMinute)}/min',
-                    style: GoogleFonts.barlow(fontSize: 12.5, color: _kDim),
-                  ),
+                  if (_subscriptionActive)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF5DCAA5).withOpacity(0.12),
+                        border: Border.all(color: const Color(0xFF5DCAA5)),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: Text(
+                        'ABBONAMENTO',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.6,
+                          color: const Color(0xFF5DCAA5),
+                        ),
+                      ),
+                    )
+                  else
+                    Text(
+                      'tariffa ${_euro(_ratePerMinute)}/min',
+                      style: GoogleFonts.barlow(fontSize: 12.5, color: _kDim),
+                    ),
                 ],
               ),
               const SizedBox(height: 13),
@@ -419,12 +461,14 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        _euro(_cost),
+                        _loadingSub ? '…' : (_subscriptionActive ? '€ 0,00' : _euro(_cost)),
                         style: GoogleFonts.barlowCondensed(
                           fontSize: 18,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 0.5,
-                          color: _kAccent,
+                          color: _subscriptionActive
+                              ? const Color(0xFF5DCAA5)
+                              : _kAccent,
                         ),
                       ),
                     ],

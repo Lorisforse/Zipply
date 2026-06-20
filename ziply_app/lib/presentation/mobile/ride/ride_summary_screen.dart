@@ -55,6 +55,7 @@ class RideSummaryScreen extends StatefulWidget {
     required this.duration,
     required this.cost,
     this.appliedDiscount = 0,
+    this.subscriptionApplied = false,
   });
 
   final RideModel ride;
@@ -70,6 +71,9 @@ class RideSummaryScreen extends StatefulWidget {
   /// riepilogo mostra il subtotale e la riga sconto.
   final double appliedDiscount;
 
+  /// UT.22 — true se il costo è azzerato da un abbonamento attivo.
+  final bool subscriptionApplied;
+
   /// Apre la schermata sostituendo la rotta corrente: dopo aver terminato non
   /// si torna alla schermata di noleggio (ormai conclusa). Entra con una
   /// dissolvenza + leggero scorrimento verso l'alto, per staccare dalla corsa
@@ -81,6 +85,7 @@ class RideSummaryScreen extends StatefulWidget {
     required Duration duration,
     required double cost,
     double appliedDiscount = 0,
+    bool subscriptionApplied = false,
   }) {
     return Navigator.of(context).pushReplacement(
       PageRouteBuilder(
@@ -92,6 +97,7 @@ class RideSummaryScreen extends StatefulWidget {
           duration: duration,
           cost: cost,
           appliedDiscount: appliedDiscount,
+          subscriptionApplied: subscriptionApplied,
         ),
         transitionsBuilder: (context, animation, _, child) {
           final curved =
@@ -210,6 +216,7 @@ class _RideSummaryScreenState extends State<RideSummaryScreen> {
                       duration: widget.duration,
                       cost: widget.cost,
                       appliedDiscount: widget.appliedDiscount,
+                      subscriptionApplied: widget.subscriptionApplied,
                       cardLastFour: _cardLastFour,
                     ),
                     const SizedBox(height: 24),
@@ -342,6 +349,7 @@ class _SummaryCard extends StatelessWidget {
     required this.duration,
     required this.cost,
     required this.appliedDiscount,
+    required this.subscriptionApplied,
     required this.cardLastFour,
   });
 
@@ -350,6 +358,7 @@ class _SummaryCard extends StatelessWidget {
   final Duration duration;
   final double cost;
   final double appliedDiscount;
+  final bool subscriptionApplied;
   final String? cardLastFour;
 
   String _shortCode() {
@@ -433,8 +442,21 @@ class _SummaryCard extends StatelessWidget {
           const SizedBox(height: 14),
           Container(height: 1, color: _kBorder),
           const SizedBox(height: 14),
-          // UT.09 — con uno sconto applicato mostra subtotale e riga sconto.
-          if (appliedDiscount > 0) ...[
+          // UT.22 — abbonamento applicato: costo gratuito in verde.
+          if (subscriptionApplied) ...[
+            _DetailRow(
+              label: 'Abbonamento applicato',
+              value: '− ${_euro(appliedDiscount)}',
+              valueColor: _kGreen,
+            ),
+            const SizedBox(height: 10),
+            _DetailRow(
+              label: 'Costo totale',
+              value: _euro(cost),
+              valueColor: _kGreen,
+            ),
+          // UT.09 — sconto codice/promozione: mostra subtotale e riga sconto.
+          ] else if (appliedDiscount > 0) ...[
             _DetailRow(label: 'Subtotale', value: _euro(cost + appliedDiscount)),
             const SizedBox(height: 10),
             _DetailRow(
@@ -443,12 +465,18 @@ class _SummaryCard extends StatelessWidget {
               valueColor: _kGreen,
             ),
             const SizedBox(height: 10),
+            _DetailRow(
+              label: 'Costo totale',
+              value: _euro(cost),
+              valueColor: _kAccent,
+            ),
+          ] else ...[
+            _DetailRow(
+              label: 'Costo totale',
+              value: _euro(cost),
+              valueColor: _kAccent,
+            ),
           ],
-          _DetailRow(
-            label: 'Costo totale',
-            value: _euro(cost),
-            valueColor: _kAccent,
-          ),
         ],
       ),
     );

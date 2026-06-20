@@ -122,11 +122,12 @@ func (h *RideHandler) End(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":           "completata",
-		"duration_minutes": summary.DurationMinutes,
-		"total_cost":       summary.TotalCost,
-		"co2_saved":        summary.Co2SavedGrams,
-		"applied_discount": summary.AppliedDiscount,
+		"status":               "completata",
+		"duration_minutes":     summary.DurationMinutes,
+		"total_cost":           summary.TotalCost,
+		"co2_saved":            summary.Co2SavedGrams,
+		"applied_discount":     summary.AppliedDiscount,
+		"subscription_applied": summary.SubscriptionApplied,
 	})
 }
 
@@ -261,10 +262,11 @@ func (h *RideHandler) EndGroup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":           "completata",
-		"duration_minutes": summary.DurationMinutes,
-		"total_cost":       summary.TotalCost,
-		"co2_saved":        summary.Co2SavedGrams,
-		"applied_discount": summary.AppliedDiscount,
+		"status":               "completata",
+		"duration_minutes":     summary.DurationMinutes,
+		"total_cost":           summary.TotalCost,
+		"co2_saved":            summary.Co2SavedGrams,
+		"applied_discount":     summary.AppliedDiscount,
+		"subscription_applied": summary.SubscriptionApplied,
 	})
 }

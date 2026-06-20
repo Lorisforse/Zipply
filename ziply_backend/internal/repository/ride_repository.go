@@ -290,6 +290,8 @@ func (r *RideRepository) endRideTx(ctx context.Context, tx pgx.Tx, userID, rideI
 		cost = 0
 	}
 
+	subApplied := hasSub
+
 	totalMinutes := activeMinutes + chargeablePauseMinutes
 
 	if _, err := tx.Exec(ctx,
@@ -322,10 +324,11 @@ func (r *RideRepository) endRideTx(ctx context.Context, tx pgx.Tx, userID, rideI
 	}
 
 	return &domain.RideSummary{
-		DurationMinutes: totalMinutes,
-		TotalCost:       cost,
-		Co2SavedGrams:   co2,
-		AppliedDiscount: appliedDiscount,
+		DurationMinutes:     totalMinutes,
+		TotalCost:           cost,
+		Co2SavedGrams:       co2,
+		AppliedDiscount:     appliedDiscount,
+		SubscriptionApplied: subApplied,
 	}, nil
 }
 

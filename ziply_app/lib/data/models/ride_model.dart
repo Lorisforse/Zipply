@@ -44,12 +44,14 @@ class RideModel {
 
 /// Riepilogo server-autoritativo restituito da POST /rides/{id}/end: durata,
 /// costo (già al netto dello sconto), CO2 risparmiata e importo scontato (UT.09).
+/// [subscriptionApplied] è true quando il costo è azzerato da un abbonamento (UT.22).
 class RideEndSummary {
   const RideEndSummary({
     required this.durationMinutes,
     required this.totalCost,
     required this.co2SavedGrams,
     required this.appliedDiscount,
+    this.subscriptionApplied = false,
   });
 
   final int durationMinutes;
@@ -61,12 +63,16 @@ class RideEndSummary {
   /// Importo scontato (0 se nessuno sconto). Costo lordo = totalCost + questo.
   final double appliedDiscount;
 
+  /// True se il costo è stato azzerato da un abbonamento attivo (UT.22).
+  final bool subscriptionApplied;
+
   factory RideEndSummary.fromJson(Map<String, dynamic> json) {
     return RideEndSummary(
       durationMinutes: (json['duration_minutes'] as num?)?.toInt() ?? 0,
       totalCost: (json['total_cost'] as num?)?.toDouble() ?? 0,
       co2SavedGrams: (json['co2_saved'] as num?)?.toDouble() ?? 0,
       appliedDiscount: (json['applied_discount'] as num?)?.toDouble() ?? 0,
+      subscriptionApplied: (json['subscription_applied'] as bool?) ?? false,
     );
   }
 }
