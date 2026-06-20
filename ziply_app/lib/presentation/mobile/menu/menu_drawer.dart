@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
+import 'package:ziply_app/presentation/mobile/chat/chat_screen.dart';
 import 'package:ziply_app/presentation/mobile/payment/payment_methods_screen.dart';
 import 'package:ziply_app/presentation/mobile/subscription/subscription_screen.dart';
 import 'package:ziply_app/services/auth_service.dart';
@@ -115,6 +116,12 @@ class _MenuDrawerState extends State<MenuDrawer> {
   void _openSubscriptions() {
     Scaffold.of(context).closeEndDrawer();
     SubscriptionScreen.show(context);
+  }
+
+  /// Chiude il drawer e apre la chat di supporto (UT.10).
+  void _openChat() {
+    Scaffold.of(context).closeEndDrawer();
+    ChatScreen.show(context);
   }
 
 
@@ -233,7 +240,7 @@ class _MenuDrawerState extends State<MenuDrawer> {
             _MenuItem(
               icon: Icons.support_agent_outlined,
               label: 'Supporto',
-              onTap: () => _notAvailable('Supporto'),
+              onTap: _openChat,
             ),
             _MenuItem(
               icon: Icons.tune,

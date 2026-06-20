@@ -108,6 +108,14 @@ func main() {
 	// UT.11 — Segnalazione malfunzionamento
 	mux.Handle("POST /malfunction-reports", middleware.JWTAuth(http.HandlerFunc(malfunctionHandler.Create)))
 
+	// UT.10 — Chat di assistenza ibrida bot/operatore
+	chatRepo := repository.NewChatRepository(pool)
+	chatUsecase := usecase.NewChatUsecase(chatRepo)
+	chatHandler := handler.NewChatHandler(chatUsecase)
+	mux.Handle("POST /chat/sessions", middleware.JWTAuth(http.HandlerFunc(chatHandler.GetOrCreateSession)))
+	mux.Handle("POST /chat/sessions/{id}/messages", middleware.JWTAuth(http.HandlerFunc(chatHandler.SendMessage)))
+	mux.Handle("GET /chat/sessions/{id}/messages", middleware.JWTAuth(http.HandlerFunc(chatHandler.GetMessages)))
+
 	// UT.22 — Abbonamenti per tipologia di mezzo
 	subscriptionRepo := repository.NewSubscriptionRepository(pool)
 	subscriptionUsecase := usecase.NewSubscriptionUsecase(subscriptionRepo)
