@@ -69,16 +69,23 @@ func (uc *BookingUsecase) Cancel(ctx context.Context, userID, bookingID string) 
 	return uc.bookings.Cancel(ctx, bookingID, userID)
 }
 
+// endOfNextDay restituisce le 23:59:59 del giorno successivo a now.
+func endOfNextDay(now time.Time) time.Time {
+	d := now.AddDate(0, 0, 1)
+	return time.Date(d.Year(), d.Month(), d.Day(), 23, 59, 59, 0, now.Location())
+}
+
 // CreateScheduled crea una prenotazione anticipata (UT.19) per un mezzo che
-// sarà utilizzato a scheduledStart, entro una finestra di 15 min – 24 h.
+// sarà utilizzato a scheduledStart. La finestra va da "adesso + 15 min" fino
+// alla fine del giorno successivo (23:59:59).
 // Restituisce la prenotazione, la preautorizzazione forfettaria calcolata e
 // schedula automaticamente la scadenza a scheduledStart + 30 min.
 func (uc *BookingUsecase) CreateScheduled(ctx context.Context, userID, vehicleID string, scheduledStart time.Time) (*domain.Booking, float64, error) {
-	advance := time.Until(scheduledStart)
-	if advance < domain.MinScheduledAdvance {
+	now := time.Now()
+	if scheduledStart.Sub(now) < domain.MinScheduledAdvance {
 		return nil, 0, domain.ErrScheduledStartTooSoon
 	}
-	if advance > domain.MaxScheduledAdvance {
+	if scheduledStart.After(endOfNextDay(now)) {
 		return nil, 0, domain.ErrScheduledStartTooFar
 	}
 

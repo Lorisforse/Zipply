@@ -38,7 +38,10 @@ class _ScheduledBookingScreenState extends State<ScheduledBookingScreen> {
   // ── Vincoli temporali ─────────────────────────────────────────────────────
 
   DateTime get _minTime => DateTime.now().add(const Duration(minutes: 15));
-  DateTime get _maxTime => DateTime.now().add(const Duration(hours: 24));
+  DateTime get _maxTime {
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    return DateTime(tomorrow.year, tomorrow.month, tomorrow.day, 23, 59);
+  }
 
   // ── Pre-auth progressiva (formula client-side = server-side) ──────────────
 
@@ -53,7 +56,8 @@ class _ScheduledBookingScreenState extends State<ScheduledBookingScreen> {
   Future<void> _pickDateTime() async {
     final now = DateTime.now();
     final firstDate = now;
-    final lastDate = now.add(const Duration(hours: 24, minutes: 1));
+    final tomorrow = now.add(const Duration(days: 1));
+    final lastDate = DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
 
     final date = await showDatePicker(
       context: context,
@@ -81,7 +85,7 @@ class _ScheduledBookingScreenState extends State<ScheduledBookingScreen> {
         _error = 'Scegli un orario almeno 15 minuti nel futuro.';
         _selectedDateTime = null;
       } else if (picked.isAfter(_maxTime)) {
-        _error = 'Non è possibile prenotare oltre 24 ore in anticipo.';
+        _error = 'Non è possibile prenotare oltre la fine di domani (23:59).';
         _selectedDateTime = null;
       } else {
         _selectedDateTime = picked;
@@ -271,7 +275,7 @@ class _ScheduledBookingScreenState extends State<ScheduledBookingScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Disponibile tra 15 min e 24 ore da adesso.',
+                'Disponibile da oggi (tra 15 min) fino alla fine di domani (23:59).',
                 style: GoogleFonts.barlow(fontSize: 12.5, color: _kDim),
               ),
               if (_error != null) ...[

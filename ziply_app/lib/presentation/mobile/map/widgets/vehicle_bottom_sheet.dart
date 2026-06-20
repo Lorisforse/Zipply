@@ -311,56 +311,71 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                 ],
               ),
               const SizedBox(height: 20),
-              // UT.13 — Sblocco diretto per prossimità (azione principale):
-              // abilitato solo entro 50 m dal mezzo.
-              SizedBox(
-                height: 52,
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: (_canUnlock && !busy) ? _unlock : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _kAccent,
-                    foregroundColor: _kBg,
-                    disabledBackgroundColor: _kSurface,
-                    disabledForegroundColor: _kDim,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                      side: _canUnlock
-                          ? BorderSide.none
-                          : const BorderSide(color: _kBorder),
+              // UT.13 — Sblocco + quadratino sconto affiancati.
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: ElevatedButton(
+                        onPressed: (_canUnlock && !busy) ? _unlock : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _kAccent,
+                          foregroundColor: _kBg,
+                          disabledBackgroundColor: _kSurface,
+                          disabledForegroundColor: _kDim,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                            side: _canUnlock
+                                ? BorderSide.none
+                                : const BorderSide(color: _kBorder),
+                          ),
+                        ),
+                        child: _isUnlocking
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: _kBg,
+                                ),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.lock_open_rounded,
+                                    size: 20,
+                                    color: _canUnlock ? _kBg : _kDim,
+                                  ),
+                                  const SizedBox(width: 9),
+                                  Text(
+                                    'SBLOCCA MEZZO',
+                                    style: GoogleFonts.barlowCondensed(
+                                      fontSize: 19,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1.2,
+                                      color: _canUnlock ? _kBg : _kDim,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
                     ),
                   ),
-                  child: _isUnlocking
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: _kBg,
-                          ),
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.lock_open_rounded,
-                              size: 20,
-                              color: _canUnlock ? _kBg : _kDim,
-                            ),
-                            const SizedBox(width: 9),
-                            Text(
-                              'SBLOCCA MEZZO',
-                              style: GoogleFonts.barlowCondensed(
-                                fontSize: 19,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 1.2,
-                                color: _canUnlock ? _kBg : _kDim,
-                              ),
-                            ),
-                          ],
-                        ),
-                ),
+                  const SizedBox(width: 8),
+                  // Quadratino sconto: apre il campo codice sconto (UT.09).
+                  _IconSquare(
+                    icon: Icons.local_offer_outlined,
+                    size: 52,
+                    enabled: !busy &&
+                        !_showDiscountInput &&
+                        _validDiscount == null,
+                    onTap: () => setState(() => _showDiscountInput = true),
+                  ),
+                ],
               ),
               if (!_canUnlock) ...[
                 const SizedBox(height: 6),
@@ -374,8 +389,7 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                 ),
               ],
               const SizedBox(height: 12),
-              // UT.09 — Codice sconto (opzionale): micro-interfaccia a scomparsa
-              // per mantenere il Bottom Sheet invasivo al minimo.
+              // UT.09 — Campo codice sconto (si espande al tap del quadratino).
               _DiscountField(
                 controller: _discountController,
                 validating: _validatingDiscount,
@@ -394,7 +408,6 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                   });
                 },
                 onChanged: () {
-                  // Un nuovo testo invalida il feedback precedente.
                   if (_validDiscount != null || _discountError != null) {
                     setState(() {
                       _validDiscount = null;
@@ -404,75 +417,56 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                 },
               ),
               const SizedBox(height: 12),
-              // UT.02 — Prenotazione (opzionale): tiene il mezzo per te finché
-              // non ci arrivi.
-              SizedBox(
-                height: 46,
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: busy ? null : _book,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _kAccent,
-                    side: const BorderSide(color: _kAccent),
-                    disabledForegroundColor: _kDim,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  ),
-                  child: _isBooking
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: _kAccent,
-                          ),
-                        )
-                      : Text(
-                          'PRENOTA',
-                          style: GoogleFonts.barlowCondensed(
-                            fontSize: 17,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.5,
-                            color: _kAccent,
+              // UT.02 + UT.19 — Prenota + quadratino calendario affiancati.
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 46,
+                      child: OutlinedButton(
+                        onPressed: busy ? null : _book,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _kAccent,
+                          side: const BorderSide(color: _kAccent),
+                          disabledForegroundColor: _kDim,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
                           ),
                         ),
-                ),
-              ),
-              // UT.19 — Prenotazione anticipata (solo bici e automobili).
-              if (widget.vehicle.kind == VehicleType.bike ||
-                  widget.vehicle.kind == VehicleType.car) ...[
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.center,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: busy ? null : _bookScheduled,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.event_available_outlined,
-                            size: 14,
-                            color: busy ? _kBorder : _kDim,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            'Prenota per un orario futuro',
-                            style: GoogleFonts.barlow(
-                              fontSize: 13,
-                              color: busy ? _kBorder : _kDim,
-                              decoration: TextDecoration.underline,
-                            ),
-                          ),
-                        ],
+                        child: _isBooking
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: _kAccent,
+                                ),
+                              )
+                            : Text(
+                                'PRENOTA',
+                                style: GoogleFonts.barlowCondensed(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.5,
+                                  color: _kAccent,
+                                ),
+                              ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  // Quadratino calendario: apre la prenotazione anticipata (UT.19).
+                  // Abilitato solo per bici e auto; disabilitato per monopattini.
+                  _IconSquare(
+                    icon: Icons.calendar_month_outlined,
+                    size: 46,
+                    enabled: !busy &&
+                        (widget.vehicle.kind == VehicleType.bike ||
+                            widget.vehicle.kind == VehicleType.car),
+                    onTap: _bookScheduled,
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -693,29 +687,41 @@ class _DiscountField extends StatelessWidget {
       );
     }
 
-    // 3. Stato di default: Micro-link non invasivo
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: enabled ? onShowInput : null,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.local_offer_outlined, size: 14, color: _kDim),
-              const SizedBox(width: 6),
-              Text(
-                'Aggiungi Codice Sconto',
-                style: GoogleFonts.barlow(
-                  fontSize: 13,
-                  color: _kDim,
-                  decoration: TextDecoration.underline,
-                ),
-              ),
-            ],
-          ),
+    // Stato di default: l'ingresso è il quadratino icona affiancato a SBLOCCA.
+    return const SizedBox.shrink();
+  }
+}
+
+// ── Quadratino icona (bottone compatto, affiancato ai pulsanti principali) ───
+class _IconSquare extends StatelessWidget {
+  const _IconSquare({
+    required this.icon,
+    required this.size,
+    required this.onTap,
+    this.enabled = true,
+  });
+
+  final IconData icon;
+  final double size;
+  final VoidCallback onTap;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: _kSurface,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: _kBorder),
+        ),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled ? _kDim : _kBorder,
         ),
       ),
     );

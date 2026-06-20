@@ -200,7 +200,7 @@ func (h *BookingHandler) CreateScheduled(w http.ResponseWriter, r *http.Request)
 		case errors.Is(err, domain.ErrScheduledStartTooSoon):
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "l'orario deve essere almeno 15 minuti nel futuro"})
 		case errors.Is(err, domain.ErrScheduledStartTooFar):
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "la prenotazione anticipata è possibile fino a 24 ore in anticipo"})
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "la prenotazione anticipata è possibile fino alla fine del giorno successivo"})
 		default:
 			log.Printf("[BOOKINGS] create scheduled failed: %v", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})

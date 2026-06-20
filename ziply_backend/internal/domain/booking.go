@@ -37,8 +37,6 @@ const (
 const (
 	// MinScheduledAdvance: finestra minima (il mezzo deve essere almeno 15 min nel futuro).
 	MinScheduledAdvance = 15 * time.Minute
-	// MaxScheduledAdvance: finestra massima (max 24 ore in anticipo).
-	MaxScheduledAdvance = 24 * time.Hour
 	// ScheduledGracePeriod: tempo extra dopo scheduledStart prima che la prenotazione scada.
 	ScheduledGracePeriod = 30 * time.Minute
 	// BookingTypeScheduled identifica una prenotazione anticipata nella colonna booking_type.
@@ -67,5 +65,5 @@ var (
 	// UT.19 — errori della prenotazione anticipata.
 	ErrVehicleTypeNotSchedulable = errors.New("la prenotazione anticipata è disponibile solo per bici e automobili")
 	ErrScheduledStartTooSoon     = errors.New("l'orario deve essere almeno 15 minuti nel futuro")
-	ErrScheduledStartTooFar      = errors.New("la prenotazione anticipata è possibile fino a 24 ore in anticipo")
+	ErrScheduledStartTooFar      = errors.New("la prenotazione anticipata è possibile fino alla fine del giorno successivo")
 )
