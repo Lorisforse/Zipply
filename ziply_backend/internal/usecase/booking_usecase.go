@@ -14,6 +14,7 @@ const expiryJobTimeout = 10 * time.Second
 // BookingRepository abstracts the persistence of bookings required by the reservation flow.
 type BookingRepository interface {
 	Create(ctx context.Context, userID, vehicleID, discountCode string, expiresAt time.Time) (*domain.Booking, error)
+	CreateMulti(ctx context.Context, userID string, vehicleIDs []string, expiresAt time.Time) ([]*domain.Booking, string, error)
 	Expire(ctx context.Context, bookingID, vehicleID string) error
 	Cancel(ctx context.Context, bookingID, userID string) error
 }
@@ -42,6 +43,22 @@ func (uc *BookingUsecase) Create(ctx context.Context, userID, vehicleID, discoun
 
 	uc.scheduleExpiry(booking)
 	return booking, nil
+}
+
+// CreateMulti riserva più mezzi insieme (UT.16) con scadenza 15 minuti e
+// programma la scadenza automatica di ciascuna prenotazione del gruppo.
+func (uc *BookingUsecase) CreateMulti(ctx context.Context, userID string, vehicleIDs []string) ([]*domain.Booking, string, error) {
+	expiresAt := time.Now().Add(domain.BookingHoldDuration)
+
+	bookings, groupID, err := uc.bookings.CreateMulti(ctx, userID, vehicleIDs, expiresAt)
+	if err != nil {
+		return nil, "", err
+	}
+
+	for _, b := range bookings {
+		uc.scheduleExpiry(b)
+	}
+	return bookings, groupID, nil
 }
 
 // Cancel annulla la prenotazione attiva dell'utente e libera il mezzo. Il job

@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
 import 'package:ziply_app/data/models/forbidden_zone_model.dart';
+import 'package:ziply_app/data/models/multi_booking_model.dart';
 import 'package:ziply_app/data/models/ride_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
@@ -18,6 +19,7 @@ import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_widgets.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/ziply_tile_layer.dart';
 import 'package:ziply_app/presentation/mobile/menu/menu_drawer.dart';
+import 'package:ziply_app/presentation/mobile/ride/group_ride_screen.dart';
 import 'package:ziply_app/presentation/mobile/ride/qr_scan_screen.dart';
 import 'package:ziply_app/presentation/mobile/ride/ride_screen.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
@@ -51,6 +53,10 @@ const double _kClusterRadiusPx = 70;
 // UT.13 — Sblocco per prossimità: abilitato solo se l'utente è entro questa
 // distanza (metri) dal mezzo prenotato.
 const double _kUnlockRadiusMeters = 50;
+
+// UT.16 — Prenotazione multipla: vincoli lato client (il backend li riverifica).
+const int _kMaxGroupVehicles = 5;
+const double _kGroupRadiusMeters = 100;
 
 enum _ViewState { loading, error, success }
 
@@ -101,6 +107,16 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   bool _cancelling = false;
   // UT.13 — guardia anti doppio-sblocco mentre la chiamata è in corso.
   bool _unlocking = false;
+
+  // UT.16 — Prenotazione multipla. _groupMode = modalità selezione attiva (toggle
+  // "Prenota gruppo"); _groupSelection = mezzi selezionati; _activeGroup =
+  // prenotazione di gruppo creata (in attesa di sblocco), con i relativi mezzi.
+  bool _groupMode = false;
+  final List<VehicleModel> _groupSelection = [];
+  MultiBookingModel? _activeGroup;
+  List<VehicleModel> _groupVehicles = const [];
+  bool _groupBooking = false; // create in corso
+  bool _groupBusy = false; // sblocco/annullo gruppo in corso
 
   // UT.07 — Destinazione e percorso (mezzo→destinazione). La destinazione si
   // imposta da una ricerca testuale; toccando un mezzo si vede il percorso per
@@ -176,7 +192,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// prenotazione attiva (lì i marker seguono la prenotazione, non la lista).
   /// In caso di errore mantiene la lista corrente.
   Future<void> _refreshVehicles() async {
-    if (_state != _ViewState.success || _activeBooking != null) return;
+    if (_state != _ViewState.success ||
+        _activeBooking != null ||
+        _activeGroup != null ||
+        _groupMode) {
+      return;
+    }
     try {
       final pos = _userPosition;
       final vehicles = pos != null
@@ -403,6 +424,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// UT.05 + UT.02 + UT.13 — Apre la scheda mezzo al tap sul marker; al ritorno
   /// gestisce l'esito.
   Future<void> _onVehicleTap(VehicleModel vehicle) async {
+    // UT.16 — Con una prenotazione di gruppo attiva i marker sono inerti.
+    if (_activeGroup != null) return;
+    // UT.16 — In modalità selezione gruppo il tap aggiunge/toglie dal gruppo.
+    if (_groupMode) {
+      _toggleGroupSelection(vehicle);
+      return;
+    }
     // Con una prenotazione attiva gli altri marker sono spenti e inerti.
     if (_activeBooking != null) return;
 
@@ -565,6 +593,175 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         await VehicleBottomSheet.show(context, vehicle, _userPosition);
     if (result == null || !mounted) return;
     await _handleSheetResult(result, vehicle);
+  }
+
+  // ── UT.16 · Prenotazione multipla ────────────────────────────────────────
+
+  /// Snackbar breve con messaggio (stile coerente con il resto della mappa).
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: _kSurface,
+        content: Text(
+          message,
+          style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+        ),
+      ),
+    );
+  }
+
+  /// Entra in modalità selezione gruppo (toggle "Prenota gruppo"): azzera
+  /// l'eventuale destinazione e parte con una selezione vuota.
+  void _enterGroupMode() {
+    setState(() {
+      _groupMode = true;
+      _groupSelection.clear();
+      _destination = null;
+      _destinationLabel = null;
+      _routePoints = const [];
+      _routeVehicle = null;
+      _routeDistanceKm = null;
+      _routeDurationMin = null;
+      _routeCost = null;
+      _routeFallback = false;
+      _suggestion = null;
+    });
+  }
+
+  /// Esce dalla modalità selezione gruppo, scartando la selezione corrente.
+  void _exitGroupMode() {
+    setState(() {
+      _groupMode = false;
+      _groupSelection.clear();
+    });
+  }
+
+  /// True se il mezzo è selezionabile in un gruppo (solo bici e monopattini).
+  bool _groupEligible(VehicleModel v) =>
+      v.kind == VehicleType.bike || v.kind == VehicleType.scooter;
+
+  /// Aggiunge/toglie un mezzo dalla selezione di gruppo, applicando i vincoli
+  /// (solo bici/monopattini, max 5, entro 100 m dal primo selezionato).
+  void _toggleGroupSelection(VehicleModel vehicle) {
+    final idx = _groupSelection.indexWhere((v) => v.id == vehicle.id);
+    if (idx >= 0) {
+      setState(() => _groupSelection.removeAt(idx));
+      return;
+    }
+    if (!_groupEligible(vehicle)) {
+      _showSnack('Nel gruppo puoi aggiungere solo bici e monopattini');
+      return;
+    }
+    if (_groupSelection.length >= _kMaxGroupVehicles) {
+      _showSnack('Puoi prenotare al massimo $_kMaxGroupVehicles mezzi');
+      return;
+    }
+    if (_groupSelection.isNotEmpty) {
+      final first = _groupSelection.first;
+      final meters = Geolocator.distanceBetween(
+        first.latitude,
+        first.longitude,
+        vehicle.latitude,
+        vehicle.longitude,
+      );
+      if (meters > _kGroupRadiusMeters) {
+        _showSnack(
+            'I mezzi devono essere entro ${_kGroupRadiusMeters.toInt()} m l\'uno dall\'altro');
+        return;
+      }
+    }
+    setState(() => _groupSelection.add(vehicle));
+  }
+
+  /// Conferma la prenotazione multipla dei mezzi selezionati.
+  Future<void> _confirmGroupBooking() async {
+    if (_groupSelection.isEmpty || _groupBooking) return;
+    setState(() => _groupBooking = true);
+    try {
+      final ids = _groupSelection.map((v) => v.id).toList(growable: false);
+      final group = await _bookingService.createMultiBooking(ids);
+      if (!mounted) return;
+      zlog('Prenotazione multipla: ${group.bookings.length} mezzi',
+          tag: 'Prenotazione');
+      setState(() {
+        _activeGroup = group;
+        _groupVehicles = List<VehicleModel>.from(_groupSelection);
+        _groupMode = false;
+        _groupSelection.clear();
+        _groupBooking = false;
+      });
+    } on SessionExpiredException {
+      if (mounted) setState(() => _groupBooking = false);
+      await _handleSessionExpired();
+    } on Exception catch (e) {
+      if (!mounted) return;
+      setState(() => _groupBooking = false);
+      _showSnack(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  /// Annulla la prenotazione di gruppo (prima dello sblocco): annulla ogni
+  /// prenotazione del gruppo e libera i mezzi.
+  Future<void> _cancelGroup() async {
+    final group = _activeGroup;
+    if (group == null || _groupBusy) return;
+    setState(() => _groupBusy = true);
+    try {
+      for (final b in group.bookings) {
+        await _bookingService.cancelBooking(b.id);
+      }
+      if (!mounted) return;
+      zlog('Prenotazione di gruppo annullata', tag: 'Prenotazione');
+      setState(() {
+        _activeGroup = null;
+        _groupVehicles = const [];
+        _groupBusy = false;
+      });
+      _load();
+    } on SessionExpiredException {
+      if (mounted) setState(() => _groupBusy = false);
+      await _handleSessionExpired();
+    } on Exception catch (e) {
+      if (!mounted) return;
+      setState(() => _groupBusy = false);
+      _showSnack(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  /// Sblocco simultaneo del gruppo → apre la schermata di noleggio di gruppo.
+  Future<void> _unlockGroup() async {
+    final group = _activeGroup;
+    if (group == null || _groupBusy) return;
+    setState(() => _groupBusy = true);
+    final navigator = Navigator.of(context);
+    final vehicles = List<VehicleModel>.from(_groupVehicles);
+    try {
+      final rides = await _rideService.unlockGroup(group.groupId);
+      if (!mounted) return;
+      setState(() {
+        _activeGroup = null;
+        _groupVehicles = const [];
+        _groupBusy = false;
+      });
+      await navigator.push(
+        MaterialPageRoute(
+          builder: (_) => GroupRideScreen(
+            groupId: group.groupId,
+            vehicles: vehicles,
+            rides: rides,
+          ),
+        ),
+      );
+      if (!mounted) return;
+      _load();
+    } on SessionExpiredException {
+      if (mounted) setState(() => _groupBusy = false);
+      await _handleSessionExpired();
+    } on Exception catch (e) {
+      if (!mounted) return;
+      setState(() => _groupBusy = false);
+      _showSnack(e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   /// Annulla la prenotazione: prima chiede conferma, poi chiama il backend e,
@@ -816,13 +1013,19 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           children: [
             _Header(onMenu: () => _scaffoldKey.currentState?.openEndDrawer()),
             // Filtri tipo mezzo: solo in browse mode (no prenotazione attiva).
-            if (_state == _ViewState.success && _activeBooking == null)
+            if (_state == _ViewState.success &&
+                _activeBooking == null &&
+                _activeGroup == null &&
+                !_groupMode)
               _FilterBar(
                 selected: _filter,
                 onChanged: (f) => setState(() => _filter = f),
               ),
             // UT.07 — Barra destinazione: ricerca testuale del punto di arrivo.
-            if (_state == _ViewState.success && _activeBooking == null)
+            if (_state == _ViewState.success &&
+                _activeBooking == null &&
+                _activeGroup == null &&
+                !_groupMode)
               _DestinationBar(
                 label: _destinationLabel,
                 onTap: _openDestinationSearch,
@@ -950,7 +1153,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           ),
         // Pulsante mezzi vicini + scan QR: solo in browse mode e quando non è
         // mostrato il pannello anteprima percorso (che occupa il fondo).
-        if (_activeBooking == null && _routeVehicle == null)
+        if (_activeBooking == null &&
+            _activeGroup == null &&
+            !_groupMode &&
+            _routeVehicle == null)
           Positioned(
             left: 0,
             right: 0,
@@ -964,7 +1170,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           ),
         // UT.13 — Sblocco via QR (globale): arriva davanti al mezzo, scansiona e
         // parte la corsa, senza bisogno di prenotare.
-        if (_activeBooking == null && _routeVehicle == null)
+        if (_activeBooking == null &&
+            _activeGroup == null &&
+            !_groupMode &&
+            _routeVehicle == null)
           Positioned(
             right: 16,
             bottom: 24,
@@ -972,6 +1181,17 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               busy: _unlocking,
               onTap: _unlocking ? null : _onScanQr,
             ),
+          ),
+        // UT.16 — Toggle "Prenota gruppo" (bottom-left), solo in browse mode.
+        if (_activeBooking == null &&
+            _activeGroup == null &&
+            !_groupMode &&
+            _routeVehicle == null &&
+            _destination == null)
+          Positioned(
+            left: 16,
+            bottom: 24,
+            child: _GroupButton(onTap: _enterGroupMode),
           ),
         // Pannello prenotazione attiva: non bloccante, la mappa resta visibile.
         if (_activeBooking != null && _bookedVehicle != null)
@@ -1008,6 +1228,42 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               onClear: _clearDestination,
             ),
           ),
+        // UT.16 — Banner "tocca i mezzi" durante la selezione gruppo.
+        if (_groupMode && _activeGroup == null)
+          Positioned(
+            left: 12,
+            right: 70,
+            top: _currentForbiddenZone != null ? 66 : 16,
+            child: const _GroupSelectBanner(),
+          ),
+        // UT.16 — Pannello selezione gruppo: conteggio + conferma/annulla.
+        if (_groupMode && _activeGroup == null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _GroupSelectionPanel(
+              count: _groupSelection.length,
+              max: _kMaxGroupVehicles,
+              busy: _groupBooking,
+              onConfirm: _confirmGroupBooking,
+              onCancel: _exitGroupMode,
+            ),
+          ),
+        // UT.16 — Pannello prenotazione di gruppo attiva: sblocco/annulla.
+        if (_activeGroup != null)
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _GroupBookingPanel(
+              group: _activeGroup!,
+              vehicles: _groupVehicles,
+              busy: _groupBusy,
+              onUnlock: _unlockGroup,
+              onCancel: _cancelGroup,
+            ),
+          ),
       ],
     );
   }
@@ -1017,7 +1273,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   /// con il conteggio; quelli isolati restano marker individuali.
   List<Marker> _buildMarkers(MapCamera camera) {
     final markers = <Marker>[];
-    if (_activeBooking != null) {
+    if (_activeGroup != null) {
+      markers.addAll(_buildGroupActiveMarkers());
+    } else if (_groupMode) {
+      markers.addAll(_buildGroupSelectionMarkers());
+    } else if (_activeBooking != null) {
       markers.addAll(_buildBookingMarkers());
     } else {
       for (final cluster in _clusterize(camera)) {
@@ -1116,6 +1376,76 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             kind: booked.kind,
             batteryLevel: booked.batteryLevel,
           ),
+        ),
+      );
+    }
+    return markers;
+  }
+
+  /// UT.16 — Marker in modalità selezione gruppo: i mezzi idonei (bici/scooter)
+  /// sono tappabili, quelli selezionati evidenziati; le auto sono spente e
+  /// non selezionabili. Niente clustering per facilitare la selezione puntuale.
+  List<Marker> _buildGroupSelectionMarkers() {
+    final markers = <Marker>[];
+    for (final v in _visibleVehicles) {
+      final selected = _groupSelection.any((s) => s.id == v.id);
+      final eligible = _groupEligible(v);
+      markers.add(
+        Marker(
+          point: LatLng(v.latitude, v.longitude),
+          width: selected
+              ? ActiveVehicleMarker.activeDiameter
+              : VehicleMarker.diameter,
+          height: selected
+              ? ActiveVehicleMarker.activeDiameter
+              : VehicleMarker.diameter,
+          rotate: true,
+          child: GestureDetector(
+            onTap: eligible ? () => _toggleGroupSelection(v) : null,
+            child: selected
+                ? ActiveVehicleMarker(kind: v.kind, batteryLevel: v.batteryLevel)
+                : VehicleMarker(
+                    kind: v.kind,
+                    batteryLevel: v.batteryLevel,
+                    dimmed: !eligible,
+                  ),
+          ),
+        ),
+      );
+    }
+    return markers;
+  }
+
+  /// UT.16 — Marker con prenotazione di gruppo attiva: i mezzi del gruppo
+  /// evidenziati, gli altri "spenti". Nessun clustering.
+  List<Marker> _buildGroupActiveMarkers() {
+    final groupIds = _groupVehicles.map((v) => v.id).toSet();
+    final markers = <Marker>[];
+    for (final v in _vehicles) {
+      if (groupIds.contains(v.id)) continue;
+      markers.add(
+        Marker(
+          point: LatLng(v.latitude, v.longitude),
+          width: VehicleMarker.diameter,
+          height: VehicleMarker.diameter,
+          rotate: true,
+          child: VehicleMarker(
+            kind: v.kind,
+            batteryLevel: v.batteryLevel,
+            dimmed: true,
+          ),
+        ),
+      );
+    }
+    for (final v in _groupVehicles) {
+      markers.add(
+        Marker(
+          point: LatLng(v.latitude, v.longitude),
+          width: ActiveVehicleMarker.activeDiameter,
+          height: ActiveVehicleMarker.activeDiameter,
+          rotate: true,
+          child:
+              ActiveVehicleMarker(kind: v.kind, batteryLevel: v.batteryLevel),
         ),
       );
     }
@@ -2539,6 +2869,467 @@ class _DestinationSearchScreenState extends State<_DestinationSearchScreen> {
           onTap: () => Navigator.of(context).pop(r),
         );
       },
+    );
+  }
+}
+
+// ── UT.16 · Pulsante "prenota gruppo" (toggle modalità, bottom-left) ────────
+class _GroupButton extends StatelessWidget {
+  const _GroupButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(28),
+        child: Container(
+          width: 56,
+          height: 56,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _kSurface,
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: _kBorder),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x73000000),
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: const Icon(Icons.group_add, color: _kAccent, size: 24),
+        ),
+      ),
+    );
+  }
+}
+
+// ── UT.16 · Banner "seleziona i mezzi" (durante la selezione gruppo) ───────
+class _GroupSelectBanner extends StatelessWidget {
+  const _GroupSelectBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 42,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: _kSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _kAccent),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x73000000),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.group_add, color: _kAccent, size: 20),
+          const SizedBox(width: 8),
+          Text(
+            'SELEZIONA I MEZZI',
+            style: GoogleFonts.barlowCondensed(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+              color: _kAccent,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              'bici/monopattini, entro 100 m',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.barlow(fontSize: 13, color: _kText),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── UT.16 · Pannello selezione gruppo (conteggio + conferma) ───────────────
+class _GroupSelectionPanel extends StatelessWidget {
+  const _GroupSelectionPanel({
+    required this.count,
+    required this.max,
+    required this.busy,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  final int count;
+  final int max;
+  final bool busy;
+  final VoidCallback onConfirm;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = count >= 1;
+    return Container(
+      decoration: const BoxDecoration(
+        color: _kBg,
+        border: Border(top: BorderSide(color: _kBorder)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x73000000),
+            blurRadius: 30,
+            offset: Offset(0, -12),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'PRENOTAZIONE DI GRUPPO',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.2,
+                            color: _kDim,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          count == 0
+                              ? 'Nessun mezzo selezionato'
+                              : '$count ${count == 1 ? 'mezzo selezionato' : 'mezzi selezionati'}',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                            color: _kText,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    'max $max',
+                    style: GoogleFonts.barlow(fontSize: 12, color: _kDim),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                height: 50,
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: (enabled && !busy) ? onConfirm : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kAccent,
+                    foregroundColor: _kBg,
+                    disabledBackgroundColor: _kSurface,
+                    disabledForegroundColor: _kDim,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                      side: enabled
+                          ? BorderSide.none
+                          : const BorderSide(color: _kBorder),
+                    ),
+                  ),
+                  child: busy
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.5, color: _kBg),
+                        )
+                      : Text(
+                          count <= 1 ? 'PRENOTA MEZZO' : 'PRENOTA $count MEZZI',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.2,
+                            color: enabled ? _kBg : _kDim,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 44,
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: busy ? null : onCancel,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _kDim,
+                    side: const BorderSide(color: _kBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  child: Text(
+                    'ANNULLA',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.6,
+                      color: _kDim,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── UT.16 · Pannello prenotazione di gruppo attiva (countdown + sblocco) ───
+class _GroupBookingPanel extends StatefulWidget {
+  const _GroupBookingPanel({
+    required this.group,
+    required this.vehicles,
+    required this.busy,
+    required this.onUnlock,
+    required this.onCancel,
+  });
+
+  final MultiBookingModel group;
+  final List<VehicleModel> vehicles;
+  final bool busy;
+  final VoidCallback onUnlock;
+  final VoidCallback onCancel;
+
+  @override
+  State<_GroupBookingPanel> createState() => _GroupBookingPanelState();
+}
+
+class _GroupBookingPanelState extends State<_GroupBookingPanel> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+      if (_remaining() <= Duration.zero) _ticker?.cancel();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  Duration _remaining() {
+    final e = widget.group.expiresAt;
+    if (e == null) return Duration.zero;
+    return e.difference(DateTime.now());
+  }
+
+  String _format(Duration d) {
+    final c = d.isNegative ? Duration.zero : d;
+    final m = c.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = c.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = _remaining();
+    final expired = remaining <= Duration.zero;
+    final n = widget.vehicles.length;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: _kBg,
+        border: Border(top: BorderSide(color: _kBorder)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x73000000),
+            blurRadius: 30,
+            offset: Offset(0, -12),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'PRENOTAZIONE DI GRUPPO',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 1.2,
+                            color: _kDim,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$n ${n == 1 ? 'mezzo' : 'mezzi'}',
+                          style: GoogleFonts.barlowCondensed(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                            color: _kText,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        expired ? 'SCADUTA' : 'SCADE TRA',
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1,
+                          color: _kDim,
+                        ),
+                      ),
+                      Text(
+                        _format(remaining),
+                        style: GoogleFonts.barlowCondensed(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w700,
+                          height: 1,
+                          color: expired ? _kDim : _kAccent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final v in widget.vehicles)
+                    Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _kSurface,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: _kBorder, width: 0.5),
+                      ),
+                      child: vehicleGlyph(v.kind, size: 20),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                height: 50,
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: (expired || widget.busy) ? null : widget.onUnlock,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kAccent,
+                    foregroundColor: _kBg,
+                    disabledBackgroundColor: _kSurface,
+                    disabledForegroundColor: _kDim,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                      side: expired
+                          ? const BorderSide(color: _kBorder)
+                          : BorderSide.none,
+                    ),
+                  ),
+                  child: widget.busy
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.5, color: _kBg),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.lock_open_rounded,
+                              color: expired ? _kDim : _kBg,
+                              size: 19,
+                            ),
+                            const SizedBox(width: 9),
+                            Text(
+                              'SBLOCCA GRUPPO',
+                              style: GoogleFonts.barlowCondensed(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.2,
+                                color: expired ? _kDim : _kBg,
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 44,
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: widget.busy ? null : widget.onCancel,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _kDim,
+                    side: const BorderSide(color: _kBorder),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  child: Text(
+                    'ANNULLA GRUPPO',
+                    style: GoogleFonts.barlowCondensed(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.6,
+                      color: _kDim,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

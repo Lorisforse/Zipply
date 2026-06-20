@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"time"
 
@@ -126,6 +127,132 @@ func (r *BookingRepository) Create(ctx context.Context, userID, vehicleID, disco
 		return nil, err
 	}
 	return b, nil
+}
+
+// CreateMulti riserva più mezzi insieme (UT.16 prenotazione multipla) in
+// un'unica transazione, sotto un group_id condiviso. Vincoli: da 1 a
+// domain.MaxGroupVehicles mezzi, solo bici/monopattini, ciascuno entro
+// domain.GroupRadiusMeters dal primo selezionato; l'utente non deve avere
+// prenotazioni attive. Ritorna le prenotazioni create e il group_id, oppure un
+// errore di dominio (ErrTooManyVehicles, ErrVehiclesTooFar,
+// ErrVehicleTypeNotAllowed, ErrVehicleNotAvailable, ErrActiveBookingExists).
+func (r *BookingRepository) CreateMulti(ctx context.Context, userID string, vehicleIDs []string, expiresAt time.Time) ([]*domain.Booking, string, error) {
+	if len(vehicleIDs) == 0 {
+		return nil, "", domain.ErrEmptyGroup
+	}
+	if len(vehicleIDs) > domain.MaxGroupVehicles {
+		return nil, "", domain.ErrTooManyVehicles
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	defer tx.Rollback(ctx)
+
+	// Rifiuta se l'utente ha già una prenotazione attiva non scaduta.
+	var hasActive bool
+	if err := tx.QueryRow(ctx,
+		`SELECT EXISTS(
+			SELECT 1 FROM bookings
+			WHERE user_id = $1 AND status = 'attiva' AND expires_at > NOW()
+		)`,
+		userID,
+	).Scan(&hasActive); err != nil {
+		return nil, "", err
+	}
+	if hasActive {
+		return nil, "", domain.ErrActiveBookingExists
+	}
+
+	// Blocca e carica ogni mezzo (stato, tipologia, coordinate), deduplicando.
+	type vrow struct {
+		id, status, typ string
+		lat, lng        float64
+	}
+	loaded := make([]vrow, 0, len(vehicleIDs))
+	seen := make(map[string]bool, len(vehicleIDs))
+	for _, vid := range vehicleIDs {
+		if seen[vid] {
+			continue
+		}
+		seen[vid] = true
+
+		var vr vrow
+		err := tx.QueryRow(ctx,
+			`SELECT v.id, v.status, vt.nome, v.latitude::float8, v.longitude::float8
+			   FROM vehicles v
+			   JOIN vehicle_types vt ON vt.id = v.type_id
+			  WHERE v.id = $1 FOR UPDATE OF v`,
+			vid,
+		).Scan(&vr.id, &vr.status, &vr.typ, &vr.lat, &vr.lng)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, "", domain.ErrVehicleNotAvailable
+		}
+		if err != nil {
+			return nil, "", err
+		}
+		if vr.status != "disponibile" {
+			return nil, "", domain.ErrVehicleNotAvailable
+		}
+		// Solo bici e monopattini: le auto sono escluse dalla prenotazione multipla.
+		if vr.typ == "Automobile elettrica" {
+			return nil, "", domain.ErrVehicleTypeNotAllowed
+		}
+		loaded = append(loaded, vr)
+	}
+	if len(loaded) == 0 {
+		return nil, "", domain.ErrEmptyGroup
+	}
+
+	// Ogni mezzo entro il raggio massimo dal primo selezionato.
+	for i := 1; i < len(loaded); i++ {
+		if haversineMeters(loaded[0].lat, loaded[0].lng, loaded[i].lat, loaded[i].lng) > domain.GroupRadiusMeters {
+			return nil, "", domain.ErrVehiclesTooFar
+		}
+	}
+
+	// Identificativo di gruppo condiviso da tutte le prenotazioni.
+	var groupID string
+	if err := tx.QueryRow(ctx, `SELECT gen_random_uuid()`).Scan(&groupID); err != nil {
+		return nil, "", err
+	}
+
+	bookings := make([]*domain.Booking, 0, len(loaded))
+	for _, vr := range loaded {
+		b := &domain.Booking{UserID: userID, VehicleID: vr.id, GroupID: &groupID}
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO bookings (user_id, vehicle_id, expires_at, status, group_id)
+			 VALUES ($1, $2, $3, 'attiva', $4)
+			 RETURNING id, created_at, expires_at, status`,
+			userID, vr.id, expiresAt, groupID,
+		).Scan(&b.ID, &b.CreatedAt, &b.ExpiresAt, &b.Status); err != nil {
+			return nil, "", err
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE vehicles SET status = 'prenotato', updated_at = NOW() WHERE id = $1`,
+			vr.id,
+		); err != nil {
+			return nil, "", err
+		}
+		bookings = append(bookings, b)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, "", err
+	}
+	return bookings, groupID, nil
+}
+
+// haversineMeters restituisce la distanza in metri tra due coordinate geografiche.
+func haversineMeters(lat1, lng1, lat2, lng2 float64) float64 {
+	const earthRadiusM = 6371000.0
+	rad := math.Pi / 180
+	dLat := (lat2 - lat1) * rad
+	dLng := (lng2 - lng1) * rad
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Cos(lat1*rad)*math.Cos(lat2*rad)*math.Sin(dLng/2)*math.Sin(dLng/2)
+	return 2 * earthRadiusM * math.Asin(math.Sqrt(a))
 }
 
 // Expire marks the booking as 'scaduta' and frees its vehicle, but only while

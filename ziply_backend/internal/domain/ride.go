@@ -14,6 +14,7 @@ type Ride struct {
 	VehicleID string
 	StartedAt time.Time
 	Status    string
+	GroupID   *string // UT.16: corsa di gruppo; nil se singola
 }
 
 // Unlock methods accepted by POST /rides/unlock.

@@ -14,6 +14,8 @@ type RideRepository interface {
 	End(ctx context.Context, userID, rideID string) (*domain.RideSummary, error)
 	Pause(ctx context.Context, userID, rideID string) (string, error)
 	Resume(ctx context.Context, userID, rideID string) (string, error)
+	UnlockGroup(ctx context.Context, userID, groupID string) ([]*domain.Ride, error)
+	EndGroup(ctx context.Context, userID, groupID string) (*domain.RideSummary, error)
 }
 
 // RideUsecase implements the vehicle unlock, end, pause and resume flows.
@@ -36,6 +38,22 @@ func (uc *RideUsecase) Unlock(ctx context.Context, userID, vehicleID, qrCode str
 // End chiude la corsa attiva dell'utente, calcola il costo e libera il mezzo.
 func (uc *RideUsecase) End(ctx context.Context, userID, rideID string) (*domain.RideSummary, error) {
 	return uc.rides.End(ctx, userID, rideID)
+}
+
+// UnlockGroup avvia tutte le corse di una prenotazione multipla (UT.16).
+func (uc *RideUsecase) UnlockGroup(ctx context.Context, userID, groupID string) ([]*domain.Ride, error) {
+	rides, err := uc.rides.UnlockGroup(ctx, userID, groupID)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("[IoT] Sbloccati %d mezzi per la corsa di gruppo %s", len(rides), groupID)
+	return rides, nil
+}
+
+// EndGroup chiude tutte le corse di una prenotazione multipla (UT.16) e ritorna
+// il riepilogo aggregato.
+func (uc *RideUsecase) EndGroup(ctx context.Context, userID, groupID string) (*domain.RideSummary, error) {
+	return uc.rides.EndGroup(ctx, userID, groupID)
 }
 
 // Pause mette in pausa la corsa attiva dell'utente e simula la messa in sicurezza via IoT.

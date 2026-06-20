@@ -187,3 +187,84 @@ func (h *RideHandler) Resume(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "attiva"})
 }
+
+// groupUnlockResponse is the JSON shape of a started group ride (UT.16).
+type groupUnlockResponse struct {
+	GroupID string         `json:"group_id"`
+	Rides   []rideResponse `json:"rides"`
+}
+
+// UnlockGroup handles POST /rides/group/{id}/unlock (UT.16), avviando tutte le
+// corse della prenotazione multipla identificata dal group_id.
+func (h *RideHandler) UnlockGroup(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.CtxUserID).(string)
+	if !ok || userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token non valido"})
+		return
+	}
+
+	groupID := r.PathValue("id")
+	if groupID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Dati non validi"})
+		return
+	}
+
+	rides, err := h.rides.UnlockGroup(r.Context(), userID, groupID)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrRideNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "nessuna prenotazione di gruppo da sbloccare"})
+		default:
+			log.Printf("[RIDES] unlock group failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})
+		}
+		return
+	}
+
+	items := make([]rideResponse, 0, len(rides))
+	for _, ride := range rides {
+		items = append(items, rideResponse{
+			RideID:    ride.ID,
+			VehicleID: ride.VehicleID,
+			StartedAt: ride.StartedAt.UTC().Format(time.RFC3339),
+		})
+	}
+
+	writeJSON(w, http.StatusCreated, groupUnlockResponse{GroupID: groupID, Rides: items})
+}
+
+// EndGroup handles POST /rides/group/{id}/end (UT.16), chiudendo tutte le corse
+// del gruppo e restituendo il riepilogo aggregato.
+func (h *RideHandler) EndGroup(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.CtxUserID).(string)
+	if !ok || userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token non valido"})
+		return
+	}
+
+	groupID := r.PathValue("id")
+	if groupID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Dati non validi"})
+		return
+	}
+
+	summary, err := h.rides.EndGroup(r.Context(), userID, groupID)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrRideNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "corsa di gruppo non trovata o già conclusa"})
+		default:
+			log.Printf("[RIDES] end group failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":           "completata",
+		"duration_minutes": summary.DurationMinutes,
+		"total_cost":       summary.TotalCost,
+		"co2_saved":        summary.Co2SavedGrams,
+		"applied_discount": summary.AppliedDiscount,
+	})
+}

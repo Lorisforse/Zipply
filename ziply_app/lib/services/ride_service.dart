@@ -140,6 +140,81 @@ class RideService {
     );
   }
 
+  /// UT.16 — Sblocca simultaneamente tutte le corse di un gruppo
+  /// (POST /rides/group/{id}/unlock). Restituisce le corse avviate; lancia
+  /// [SessionExpiredException] sul 401.
+  Future<List<RideModel>> unlockGroup(String groupId) async {
+    final token = await _storage.read(key: kTokenKey);
+
+    final http.Response response;
+    try {
+      response = await _client.post(
+        Uri.parse('$kBaseUrl/rides/group/$groupId/unlock'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(_timeout);
+    } on http.ClientException {
+      throw Exception('Impossibile connettersi al server');
+    } on TimeoutException {
+      throw Exception('Impossibile connettersi al server');
+    }
+
+    final body = _decodeBody(response.bodyBytes);
+
+    if (response.statusCode == 201) {
+      final list = (body?['rides'] as List?) ?? const [];
+      return list
+          .whereType<Map<String, dynamic>>()
+          .map(RideModel.fromJson)
+          .toList(growable: false);
+    }
+    if (response.statusCode == 401) throw const SessionExpiredException();
+
+    final serverMessage = body?['error'];
+    throw Exception(
+      serverMessage is String && serverMessage.isNotEmpty
+          ? serverMessage
+          : 'Impossibile sbloccare il gruppo',
+    );
+  }
+
+  /// UT.16 — Termina tutte le corse di un gruppo (POST /rides/group/{id}/end) e
+  /// restituisce il riepilogo aggregato (durata, costo, CO2, sconto sommati).
+  Future<RideEndSummary> endGroup(String groupId) async {
+    final token = await _storage.read(key: kTokenKey);
+
+    final http.Response response;
+    try {
+      response = await _client.post(
+        Uri.parse('$kBaseUrl/rides/group/$groupId/end'),
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(_timeout);
+    } on http.ClientException {
+      throw Exception('Impossibile connettersi al server');
+    } on TimeoutException {
+      throw Exception('Impossibile connettersi al server');
+    }
+
+    final body = _decodeBody(response.bodyBytes);
+
+    if (response.statusCode == 200) {
+      return RideEndSummary.fromJson(body ?? const {});
+    }
+    if (response.statusCode == 401) throw const SessionExpiredException();
+
+    final serverMessage = body?['error'];
+    throw Exception(
+      serverMessage is String && serverMessage.isNotEmpty
+          ? serverMessage
+          : 'Impossibile terminare il noleggio di gruppo',
+    );
+  }
+
   /// Esegue la POST /rides/unlock con il body indicato. In caso di errore
   /// lancia una Exception con un messaggio pronto per la UI; per 404/409
   /// propaga il messaggio del backend ("veicolo non trovato", "prenotazione

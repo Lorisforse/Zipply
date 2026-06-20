@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
+import 'package:ziply_app/data/models/multi_booking_model.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 
 /// Servizio per la prenotazione dei mezzi: chiamate REST verso ziply_backend.
@@ -66,6 +67,47 @@ class BookingService {
     }
 
     throw Exception(_errorMessageFor(response.statusCode, body));
+  }
+
+  /// UT.16 — Prenotazione multipla (POST /bookings/multi): riserva insieme i
+  /// mezzi [vehicleIds] sotto un group_id condiviso. Lancia
+  /// [SessionExpiredException] sul 401; per 409/422 propaga il messaggio del
+  /// backend (vincoli non rispettati, mezzo non disponibile, ecc.).
+  Future<MultiBookingModel> createMultiBooking(List<String> vehicleIds) async {
+    final token = await _storage.read(key: kTokenKey);
+
+    final http.Response response;
+    try {
+      response = await _client
+          .post(
+            Uri.parse('$kBaseUrl/bookings/multi'),
+            headers: {
+              'Content-Type': 'application/json',
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({'vehicle_ids': vehicleIds}),
+          )
+          .timeout(_timeout);
+    } on http.ClientException {
+      throw Exception('Impossibile connettersi al server');
+    } on TimeoutException {
+      throw Exception('Impossibile connettersi al server');
+    }
+
+    final body = _decodeBody(response.bodyBytes);
+
+    if (response.statusCode == 201) {
+      if (body != null) return MultiBookingModel.fromJson(body);
+      throw Exception('Risposta del server non valida');
+    }
+    if (response.statusCode == 401) throw const SessionExpiredException();
+
+    final serverMessage = body?['error'];
+    throw Exception(
+      serverMessage is String && serverMessage.isNotEmpty
+          ? serverMessage
+          : 'Impossibile completare la prenotazione di gruppo',
+    );
   }
 
   /// Annulla la prenotazione [bookingId] (POST /bookings/{id}/cancel).

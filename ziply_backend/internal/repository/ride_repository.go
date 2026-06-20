@@ -134,6 +134,23 @@ func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domai
 	}
 	defer tx.Rollback(ctx)
 
+	summary, err := r.endRideTx(ctx, tx, userID, rideID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return summary, nil
+}
+
+// endRideTx chiude una singola corsa ('attiva' o 'paused') dell'utente dentro la
+// transazione tx: calcola e persiste durata, costo e CO2, applica gli sconti,
+// libera il mezzo e ritorna il riepilogo (senza commit). Condivisa da End (corsa
+// singola) e da EndGroup (corsa di gruppo, UT.16).
+func (r *RideRepository) endRideTx(ctx context.Context, tx pgx.Tx, userID, rideID string) (*domain.RideSummary, error) {
+	var err error
 	// Blocca la corsa e leggi inizio, tariffa e CO2/km della tipologia,
 	// verificando che sia dell'utente e ancora attiva (o in pausa). Recupera anche
 	// l'eventuale codice sconto collegato alla prenotazione (UT.09).
@@ -286,9 +303,6 @@ func (r *RideRepository) End(ctx context.Context, userID, rideID string) (*domai
 		return nil, err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
 	return &domain.RideSummary{
 		DurationMinutes: totalMinutes,
 		TotalCost:       cost,
@@ -404,4 +418,128 @@ func (r *RideRepository) Resume(ctx context.Context, userID, rideID string) (str
 	}
 
 	return vehicleType, tx.Commit(ctx)
+}
+
+// UnlockGroup avvia tutte le corse di una prenotazione multipla (UT.16): per ogni
+// prenotazione 'attiva' del gruppo consuma la prenotazione, crea una corsa con lo
+// stesso group_id e porta il mezzo 'in_uso'. Ritorna domain.ErrRideNotFound se il
+// gruppo non ha prenotazioni attive dell'utente.
+func (r *RideRepository) UnlockGroup(ctx context.Context, userID, groupID string) ([]*domain.Ride, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(ctx,
+		`SELECT id, vehicle_id FROM bookings
+		  WHERE group_id = $1 AND user_id = $2 AND status = 'attiva'
+		  FOR UPDATE`,
+		groupID, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	type bk struct{ bookingID, vehicleID string }
+	var pending []bk
+	for rows.Next() {
+		var b bk
+		if err := rows.Scan(&b.bookingID, &b.vehicleID); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		pending = append(pending, b)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(pending) == 0 {
+		return nil, domain.ErrRideNotFound
+	}
+
+	gid := groupID
+	rides := make([]*domain.Ride, 0, len(pending))
+	for _, p := range pending {
+		if _, err := tx.Exec(ctx,
+			`UPDATE bookings SET status = 'utilizzata' WHERE id = $1`, p.bookingID,
+		); err != nil {
+			return nil, err
+		}
+		ride := &domain.Ride{BookingID: p.bookingID, UserID: userID, VehicleID: p.vehicleID, GroupID: &gid}
+		if err := tx.QueryRow(ctx,
+			`INSERT INTO rides (booking_id, user_id, vehicle_id, group_id, started_at, status)
+			 VALUES ($1, $2, $3, $4, NOW(), 'attiva')
+			 RETURNING id, started_at, status`,
+			p.bookingID, userID, p.vehicleID, groupID,
+		).Scan(&ride.ID, &ride.StartedAt, &ride.Status); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE vehicles SET status = 'in_uso', updated_at = NOW() WHERE id = $1`, p.vehicleID,
+		); err != nil {
+			return nil, err
+		}
+		rides = append(rides, ride)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return rides, nil
+}
+
+// EndGroup chiude tutte le corse attive/in pausa di un gruppo (UT.16) in un'unica
+// transazione e ritorna il riepilogo aggregato (durata, costo, CO2 e sconto
+// sommati). Ritorna domain.ErrRideNotFound se il gruppo non ha corse da chiudere.
+func (r *RideRepository) EndGroup(ctx context.Context, userID, groupID string) (*domain.RideSummary, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(ctx,
+		`SELECT id FROM rides
+		  WHERE group_id = $1 AND user_id = $2 AND status IN ('attiva', 'paused')`,
+		groupID, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	var rideIDs []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rideIDs = append(rideIDs, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(rideIDs) == 0 {
+		return nil, domain.ErrRideNotFound
+	}
+
+	total := &domain.RideSummary{}
+	for _, id := range rideIDs {
+		s, err := r.endRideTx(ctx, tx, userID, id)
+		if err != nil {
+			return nil, err
+		}
+		total.DurationMinutes += s.DurationMinutes
+		total.TotalCost += s.TotalCost
+		total.Co2SavedGrams += s.Co2SavedGrams
+		total.AppliedDiscount += s.AppliedDiscount
+	}
+	total.TotalCost = math.Round(total.TotalCost*100) / 100
+	total.AppliedDiscount = math.Round(total.AppliedDiscount*100) / 100
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return total, nil
 }

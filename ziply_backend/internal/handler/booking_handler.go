@@ -87,6 +87,66 @@ func (h *BookingHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// createMultiBookingRequest mirrors the JSON body of POST /bookings/multi (UT.16).
+type createMultiBookingRequest struct {
+	VehicleIDs []string `json:"vehicle_ids"`
+}
+
+// multiBookingResponse is the JSON shape of a multiple reservation.
+type multiBookingResponse struct {
+	GroupID  string            `json:"group_id"`
+	Bookings []bookingResponse `json:"bookings"`
+}
+
+// CreateMulti handles POST /bookings/multi (UT.16), riservando insieme più mezzi
+// (bici/monopattini) sotto un identificativo di gruppo condiviso.
+func (h *BookingHandler) CreateMulti(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.CtxUserID).(string)
+	if !ok || userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "token non valido"})
+		return
+	}
+
+	var req createMultiBookingRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.VehicleIDs) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Dati non validi"})
+		return
+	}
+
+	bookings, groupID, err := h.bookings.CreateMulti(r.Context(), userID, req.VehicleIDs)
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrActiveBookingExists):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "hai già una prenotazione attiva"})
+		case errors.Is(err, domain.ErrVehicleNotAvailable):
+			writeJSON(w, http.StatusConflict, map[string]string{"error": "uno dei mezzi non è più disponibile"})
+		case errors.Is(err, domain.ErrTooManyVehicles):
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "puoi prenotare al massimo 5 mezzi"})
+		case errors.Is(err, domain.ErrVehiclesTooFar):
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "i mezzi devono essere entro 100 metri l'uno dall'altro"})
+		case errors.Is(err, domain.ErrVehicleTypeNotAllowed):
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "la prenotazione multipla è ammessa solo per bici e monopattini"})
+		case errors.Is(err, domain.ErrEmptyGroup):
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nessun mezzo selezionato"})
+		default:
+			log.Printf("[BOOKINGS] create multi failed: %v", err)
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})
+		}
+		return
+	}
+
+	items := make([]bookingResponse, 0, len(bookings))
+	for _, b := range bookings {
+		items = append(items, bookingResponse{
+			ID:        b.ID,
+			VehicleID: b.VehicleID,
+			ExpiresAt: b.ExpiresAt.UTC().Format(time.RFC3339),
+		})
+	}
+
+	writeJSON(w, http.StatusCreated, multiBookingResponse{GroupID: groupID, Bookings: items})
+}
+
 // Cancel handles POST /bookings/{id}/cancel, annullando la prenotazione attiva
 // dell'utente autenticato e liberando il mezzo.
 func (h *BookingHandler) Cancel(w http.ResponseWriter, r *http.Request) {
