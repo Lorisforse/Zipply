@@ -1,2 +1,7 @@
-// Test di widget per l'app Ziply.
-// TODO: aggiungere test unitari e di widget.
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('Dummy test placeholder', () {
+    expect(true, true);
+  });
+}

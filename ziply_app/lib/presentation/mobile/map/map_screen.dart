@@ -31,6 +31,7 @@ import 'package:ziply_app/services/ride_service.dart';
 import 'package:ziply_app/services/route_service.dart';
 import 'package:ziply_app/services/routing_service.dart';
 import 'package:ziply_app/services/vehicle_service.dart';
+import 'package:ziply_app/services/notification_service.dart';
 
 // ── Palette (da Grafica/mappa-handoff) ─────────────────────────────────────
 const Color _kBg = Color(0xFF1A1A1A);
@@ -175,6 +176,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     super.initState();
     _load();
     _startAutoRefresh();
+    NotificationService.instance.init();
   }
 
   @override
@@ -482,6 +484,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _routeCost = null;
         _routeFallback = false;
       });
+      NotificationService.instance.scheduleBookingExpiryNotification(
+        result.booking!,
+        vehicle.type,
+      );
       _loadWalkingRoute(vehicle);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -785,6 +791,31 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
+  /// UT.20 — Callback invocato dal countdown del _BookingPanel quando la
+  /// prenotazione scade: resetta lo stato, annulla la notifica schedulata,
+  /// avvisa l'utente con una snackbar e ricarica i mezzi.
+  void _onBookingExpired() {
+    if (!mounted) return;
+    zlog('Prenotazione scaduta automaticamente', tag: 'Prenotazione');
+    NotificationService.instance.cancelNotification(100);
+    setState(() {
+      _activeBooking = null;
+      _bookedVehicle = null;
+      _walkingRoute = const [];
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        backgroundColor: _kSurface,
+        content: Text(
+          'La prenotazione è scaduta.',
+          style: GoogleFonts.barlow(fontSize: 14, color: _kText),
+        ),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+    _load();
+  }
+
   /// Annulla la prenotazione: prima chiede conferma, poi chiama il backend e,
   /// se va a buon fine, libera la mappa e mostra la schermata "annullata".
   Future<void> _onCancelBooking() async {
@@ -808,6 +839,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         _bookedVehicle = null;
         _walkingRoute = const [];
       });
+      NotificationService.instance.cancelNotification(100);
       await navigator.push(
         MaterialPageRoute(
           builder: (_) => BookingCancelledScreen(
@@ -995,6 +1027,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       _routePoints = const [];
       _routeVehicle = null;
     });
+    NotificationService.instance.cancelNotification(100);
     await navigator.push(
       MaterialPageRoute(
           builder: (_) => RideScreen(ride: ride, vehicle: vehicle)),
@@ -1227,6 +1260,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               unlocking: _unlocking,
               onUnlockProximity: _onUnlockProximity,
               onCancel: _onCancelBooking,
+              onExpired: _onBookingExpired,
             ),
           ),
         // UT.07 — Anteprima percorso: mezzo scelto + distanza/durata, con CTA
@@ -2049,6 +2083,7 @@ class _BookingPanel extends StatefulWidget {
     required this.unlocking,
     required this.onUnlockProximity,
     required this.onCancel,
+    required this.onExpired,
   });
 
   final BookingModel booking;
@@ -2064,6 +2099,10 @@ class _BookingPanel extends StatefulWidget {
   final VoidCallback onUnlockProximity;
   final VoidCallback onCancel;
 
+  /// Callback invocato quando il countdown raggiunge lo zero: il parent deve
+  /// resettare lo stato di prenotazione e ricaricare la lista mezzi.
+  final VoidCallback onExpired;
+
   @override
   State<_BookingPanel> createState() => _BookingPanelState();
 }
@@ -2077,8 +2116,12 @@ class _BookingPanelState extends State<_BookingPanel> {
     // Tick al secondo: il countdown è ricalcolato da expires_at del backend.
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
+      if (_remaining() <= Duration.zero) {
+        _ticker?.cancel();
+        widget.onExpired();
+        return;
+      }
       setState(() {});
-      if (_remaining() <= Duration.zero) _ticker?.cancel();
     });
   }
 
@@ -2088,7 +2131,8 @@ class _BookingPanelState extends State<_BookingPanel> {
     super.dispose();
   }
 
-  Duration _remaining() => widget.booking.expiresAt.difference(DateTime.now());
+  // Usiamo .toLocal() per gestire correttamente expiresAt in UTC dal backend.
+  Duration _remaining() => widget.booking.expiresAt.toLocal().difference(DateTime.now());
 
   String _format(Duration d) {
     final clamped = d.isNegative ? Duration.zero : d;
