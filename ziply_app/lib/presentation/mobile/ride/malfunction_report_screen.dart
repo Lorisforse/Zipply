@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:ziply_app/core/theme/app_colors.dart';
+import 'package:ziply_app/core/theme/app_text_styles.dart';
 import 'package:ziply_app/services/malfunction_report_service.dart';
 
-const Color _kBg = Color(0xFF1A1A1A);
-const Color _kSurface = Color(0xFF252525);
-const Color _kBorder = Color(0xFF333333);
-const Color _kText = Color(0xFFF5F5F5);
-const Color _kDim = Color(0xFF777777);
-const Color _kAccent = Color(0xFFF69659);
+const Color _kBg = AppColors.bg;
+const Color _kSurface = AppColors.surface;
+const Color _kBorder = AppColors.border;
+const Color _kText = AppColors.text;
+const Color _kDim = AppColors.dim;
+const Color _kAccent = AppColors.accent;
 
 TextStyle _cond({double size = 14, FontWeight w = FontWeight.w700, Color c = _kText, double ls = 0}) =>
-    GoogleFonts.barlowCondensed(fontSize: size, fontWeight: w, color: c, letterSpacing: ls);
+    appCond(size: size, w: w, c: c, ls: ls);
 
 TextStyle _body({double size = 15, FontWeight w = FontWeight.w400, Color c = _kText}) =>
-    GoogleFonts.barlow(fontSize: size, fontWeight: w, color: c);
+    appBody(size: size, w: w, c: c);
 
 class MalfunctionReportScreen extends StatefulWidget {
   const MalfunctionReportScreen({

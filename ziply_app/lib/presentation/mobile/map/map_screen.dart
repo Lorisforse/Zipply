@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:ziply_app/core/theme/app_colors.dart';
 import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
 import 'package:ziply_app/data/models/forbidden_zone_model.dart';
@@ -34,13 +35,13 @@ import 'package:ziply_app/services/vehicle_service.dart';
 import 'package:ziply_app/services/notification_service.dart';
 
 // ── Palette (da Grafica/mappa-handoff) ─────────────────────────────────────
-const Color _kBg = Color(0xFF1A1A1A);
-const Color _kSurface = Color(0xFF252525);
-const Color _kBorder = Color(0xFF333333);
-const Color _kText = Color(0xFFF5F5F5);
-const Color _kDim = Color(0xFF777777);
-const Color _kAccent = Color(0xFFF69659);
-const Color _kGreen = Color(0xFF5DCAA5);
+const Color _kBg = AppColors.bg;
+const Color _kSurface = AppColors.surface;
+const Color _kBorder = AppColors.border;
+const Color _kText = AppColors.text;
+const Color _kDim = AppColors.dim;
+const Color _kAccent = AppColors.accent;
+const Color _kGreen = AppColors.green;
 
 // Centro di Zootropolis: fallback quando la posizione non è disponibile.
 const LatLng _kZootropolisCenter = LatLng(45.4654, 9.1859);
@@ -1138,7 +1139,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       Polygon(
                         points: ring,
                         color: const Color(0x33E53935), // rosso ~20% opacità
-                        borderColor: const Color(0xFFE53935),
+                        borderColor: AppColors.red,
                         borderStrokeWidth: 2,
                       ),
                 ],
@@ -1820,7 +1821,7 @@ class _ForbiddenZoneBanner extends StatelessWidget {
 
   final ForbiddenZoneModel zone;
 
-  static const Color _kRed = Color(0xFFE53935);
+  static const Color _kRed = AppColors.red;
 
   @override
   Widget build(BuildContext context) {
@@ -1882,7 +1883,7 @@ class _UserDot extends StatefulWidget {
 }
 
 class _UserDotState extends State<_UserDot> with TickerProviderStateMixin {
-  static const Color _kDotColor = Color(0xFFD4580A);
+  static const Color _kDotColor = AppColors.accentDark;
 
   // Respiro lento e continuo dell'alone di accuratezza.
   late final AnimationController _idle = AnimationController(

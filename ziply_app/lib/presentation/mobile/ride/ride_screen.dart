@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:ziply_app/core/theme/app_colors.dart';
 import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/data/models/ride_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
@@ -21,13 +22,13 @@ import 'package:ziply_app/services/ride_service.dart';
 import 'package:ziply_app/services/subscription_service.dart';
 
 // ── Palette (da Grafica/noleggio-attivo-handoff) ───────────────────────────
-const Color _kBg = Color(0xFF1A1A1A);
-const Color _kSurface = Color(0xFF252525);
-const Color _kSurface2 = Color(0xFF2D2D2D);
-const Color _kBorder = Color(0xFF333333);
-const Color _kText = Color(0xFFF5F5F5);
-const Color _kDim = Color(0xFF777777);
-const Color _kAccent = Color(0xFFF69659);
+const Color _kBg = AppColors.bg;
+const Color _kSurface = AppColors.surface;
+const Color _kSurface2 = AppColors.surface2;
+const Color _kBorder = AppColors.border;
+const Color _kText = AppColors.text;
+const Color _kDim = AppColors.dim;
+const Color _kAccent = AppColors.accent;
 
 const double _kZoom = 16;
 
@@ -385,8 +386,8 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF5DCAA5).withOpacity(0.12),
-                        border: Border.all(color: const Color(0xFF5DCAA5)),
+                        color: AppColors.green.withOpacity(0.12),
+                        border: Border.all(color: AppColors.green),
                         borderRadius: BorderRadius.circular(3),
                       ),
                       child: Text(
@@ -395,7 +396,7 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.6,
-                          color: const Color(0xFF5DCAA5),
+                          color: AppColors.green,
                         ),
                       ),
                     )
@@ -467,7 +468,7 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                           fontWeight: FontWeight.w600,
                           letterSpacing: 0.5,
                           color: _subscriptionActive
-                              ? const Color(0xFF5DCAA5)
+                              ? AppColors.green
                               : _kAccent,
                         ),
                       ),

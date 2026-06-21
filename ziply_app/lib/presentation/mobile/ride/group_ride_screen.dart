@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:ziply_app/core/theme/app_colors.dart';
 import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/data/models/ride_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
@@ -19,13 +20,13 @@ import 'package:ziply_app/presentation/mobile/ride/group_ride_summary_screen.dar
 import 'package:ziply_app/services/api_exceptions.dart';
 import 'package:ziply_app/services/ride_service.dart';
 
-const Color _kBg = Color(0xFF1A1A1A);
-const Color _kSurface = Color(0xFF252525);
-const Color _kSurface2 = Color(0xFF2D2D2D);
-const Color _kBorder = Color(0xFF333333);
-const Color _kText = Color(0xFFF5F5F5);
-const Color _kDim = Color(0xFF777777);
-const Color _kAccent = Color(0xFFF69659);
+const Color _kBg = AppColors.bg;
+const Color _kSurface = AppColors.surface;
+const Color _kSurface2 = AppColors.surface2;
+const Color _kBorder = AppColors.border;
+const Color _kText = AppColors.text;
+const Color _kDim = AppColors.dim;
+const Color _kAccent = AppColors.accent;
 
 const double _kZoom = 15.5;
 

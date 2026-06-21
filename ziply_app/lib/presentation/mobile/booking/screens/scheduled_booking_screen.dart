@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:ziply_app/core/theme/app_colors.dart';
 import 'package:ziply_app/data/models/booking_model.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/services/booking_service.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 
 // ── Palette ─────────────────────────────────────────────────────────────────
-const Color _kBg = Color(0xFF1A1A1A);
-const Color _kSurface = Color(0xFF252525);
-const Color _kBorder = Color(0xFF333333);
-const Color _kText = Color(0xFFF5F5F5);
-const Color _kDim = Color(0xFF777777);
-const Color _kAccent = Color(0xFFF69659);
+const Color _kBg = AppColors.bg;
+const Color _kSurface = AppColors.surface;
+const Color _kBorder = AppColors.border;
+const Color _kText = AppColors.text;
+const Color _kDim = AppColors.dim;
+const Color _kAccent = AppColors.accent;
 
 /// UT.19 — Schermata di selezione data/ora e conferma della prenotazione
 /// anticipata. Accessibile solo per bici e automobili elettriche.
@@ -289,14 +290,14 @@ class _ScheduledBookingScreenState extends State<ScheduledBookingScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Icon(Icons.error_outline,
-                        size: 15, color: Color(0xFFE57373)),
+                        size: 15, color: AppColors.red),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         _error!,
                         style: GoogleFonts.barlow(
                           fontSize: 13,
-                          color: const Color(0xFFE57373),
+                          color: AppColors.red,
                         ),
                       ),
                     ),

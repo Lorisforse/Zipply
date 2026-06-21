@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:ziply_app/core/theme/app_colors.dart';
+import 'package:ziply_app/core/theme/app_theme.dart';
 import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
 import 'package:ziply_app/presentation/mobile/map/map_screen.dart';
@@ -25,16 +27,7 @@ class ZiplyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Ziply',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF1A1A1A),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFF69659),
-          surface: Color(0xFF252525),
-        ),
-        splashFactory: NoSplash.splashFactory,
-        highlightColor: Colors.transparent,
-      ),
+      theme: AppTheme.dark,
       // TODO: sostituire con GoRouter quando sono pronte più schermate
       home: kIsWeb
           ? const Scaffold(
@@ -80,7 +73,7 @@ class _AuthGateState extends State<AuthGate> {
         if (snapshot.connectionState != ConnectionState.done) {
           // Schermo nero minimale durante il check del token.
           return const Scaffold(
-            backgroundColor: Color(0xFF1A1A1A),
+            backgroundColor: AppColors.bg,
             body: SizedBox.shrink(),
           );
         }

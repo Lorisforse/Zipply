@@ -3,18 +3,19 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:ziply_app/core/theme/app_colors.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 
 // ── Stile marker (da Grafica/mappa-handoff) ────────────────────────────────
 // Cerchio di sfondo #D4580A con icona bianca #FFFFFF; l'unica differenza tra i
 // tipi è l'icona. Attorno, un anello di tacche indica la carica della batteria.
-const Color _kMarkerFill = Color(0xFFD4580A);
-const Color _kMarkerIcon = Color(0xFFFFFFFF);
+const Color _kMarkerFill = AppColors.accentDark;
+const Color _kMarkerIcon = AppColors.markerIcon;
 
 // Anello batteria (da convenzione badge: verde se >70%, altrimenti accent).
-const Color _kBatteryFull  = Color(0xFF5DCAA5);
-const Color _kBatteryLow   = Color(0xFFF69659);
-const Color _kBatteryTrack = Color(0x4DFFFFFF); // tacche "vuote"
+const Color _kBatteryFull  = AppColors.green;
+const Color _kBatteryLow   = AppColors.accent;
+const Color _kBatteryTrack = AppColors.batteryTrack; // tacche "vuote"
 
 const double _kCoreDiameter = 38; // cerchio interno con icona
 const double _kRingDiameter = 50; // anello batteria attorno al core

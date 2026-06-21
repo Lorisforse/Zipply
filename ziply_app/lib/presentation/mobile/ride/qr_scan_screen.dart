@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:ziply_app/core/theme/app_colors.dart';
 
-// ── Palette (da Grafica/handoff) ───────────────────────────────────────────
-const Color _kBg     = Color(0xFF1A1A1A);
-const Color _kBorder = Color(0xFF333333);
-const Color _kText   = Color(0xFFF5F5F5);
-const Color _kDim    = Color(0xFF777777);
-const Color _kAccent = Color(0xFFF69659);
+// Palette (alias di AppColors).
+const Color _kBg     = AppColors.bg;
+const Color _kBorder = AppColors.border;
+const Color _kText   = AppColors.text;
+const Color _kDim    = AppColors.dim;
+const Color _kAccent = AppColors.accent;
 
 /// [MOBILE] UT.13 — Scanner QR per lo sblocco del mezzo.
 /// Apre la fotocamera, legge il QR stampato sul mezzo e restituisce al

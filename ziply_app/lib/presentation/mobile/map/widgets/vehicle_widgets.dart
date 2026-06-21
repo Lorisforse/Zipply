@@ -3,14 +3,15 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:ziply_app/core/theme/app_colors.dart';
 import 'package:ziply_app/data/models/vehicle_model.dart';
 import 'package:ziply_app/presentation/mobile/map/widgets/vehicle_marker.dart';
 
-// ── Palette condivisa (da Grafica/mappa-handoff) ───────────────────────────
-const Color _kSurface = Color(0xFF252525);
-const Color _kBorder  = Color(0xFF333333);
-const Color _kAccent  = Color(0xFFF69659);
-const Color _kGreen   = Color(0xFF5DCAA5);
+// Palette (alias di AppColors).
+const Color _kSurface = AppColors.surface;
+const Color _kBorder  = AppColors.border;
+const Color _kAccent  = AppColors.accent;
+const Color _kGreen   = AppColors.green;
 
 /// Glifo del mezzo coerente col marker sulla mappa (monopattino = stesso SVG,
 /// NON Icons.electric_scooter col fulmine), colorato in [color].

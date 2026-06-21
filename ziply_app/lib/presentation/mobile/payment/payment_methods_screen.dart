@@ -1,26 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:ziply_app/core/theme/app_colors.dart';
+import 'package:ziply_app/core/theme/app_text_styles.dart';
 import 'package:ziply_app/data/models/payment_method_model.dart';
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
 import 'package:ziply_app/services/api_exceptions.dart';
 import 'package:ziply_app/services/auth_service.dart';
 import 'package:ziply_app/services/payment_method_service.dart';
 
-// ── Palette ────────────────────────────────────────────────────────────────
-const Color _kBg      = Color(0xFF1A1A1A);
-const Color _kSurface = Color(0xFF252525);
-const Color _kBorder  = Color(0xFF333333);
-const Color _kText    = Color(0xFFF5F5F5);
-const Color _kDim     = Color(0xFF777777);
-const Color _kAccent  = Color(0xFFF69659);
+// Palette (alias di AppColors).
+const Color _kBg      = AppColors.bg;
+const Color _kSurface = AppColors.surface;
+const Color _kBorder  = AppColors.border;
+const Color _kText    = AppColors.text;
+const Color _kDim     = AppColors.dim;
+const Color _kAccent  = AppColors.accent;
 
-// ── Text styles ──────────────────────────────────────────────────────────────
+// Stili di testo (wrapper sugli helper condivisi).
 TextStyle _cond({double size = 14, FontWeight w = FontWeight.w700, Color c = _kText, double ls = 0}) =>
-    GoogleFonts.barlowCondensed(fontSize: size, fontWeight: w, color: c, letterSpacing: ls);
+    appCond(size: size, w: w, c: c, ls: ls);
 
 TextStyle _body({double size = 15, FontWeight w = FontWeight.w400, Color c = _kText}) =>
-    GoogleFonts.barlow(fontSize: size, fontWeight: w, color: c);
+    appBody(size: size, w: w, c: c);
 
 /// Stato della vista lista, allineato a [_ViewState] della MapScreen.
 enum _ViewState { loading, error, success }

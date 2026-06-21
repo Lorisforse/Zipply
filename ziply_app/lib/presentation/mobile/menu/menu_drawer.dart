@@ -1,7 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:ziply_app/core/theme/app_colors.dart';
+import 'package:ziply_app/core/theme/app_text_styles.dart';
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
 import 'package:ziply_app/presentation/mobile/chat/chat_screen.dart';
 import 'package:ziply_app/presentation/mobile/payment/payment_methods_screen.dart';
@@ -9,19 +10,19 @@ import 'package:ziply_app/presentation/mobile/subscription/subscription_screen.d
 import 'package:ziply_app/services/auth_service.dart';
 import 'package:ziply_app/services/payment_link_service.dart';
 
-// ── Palette ────────────────────────────────────────────────────────────────
-const Color _kBg      = Color(0xFF1A1A1A);
-const Color _kBorder  = Color(0xFF333333);
-const Color _kText    = Color(0xFFF5F5F5);
-const Color _kDim     = Color(0xFF777777);
-const Color _kAccent  = Color(0xFFF69659);
-const Color _kGreen   = Color(0xFF5DCAA5);
+// Palette (alias di AppColors).
+const Color _kBg      = AppColors.bg;
+const Color _kBorder  = AppColors.border;
+const Color _kText    = AppColors.text;
+const Color _kDim     = AppColors.dim;
+const Color _kAccent  = AppColors.accent;
+const Color _kGreen   = AppColors.green;
 
 TextStyle _cond({double size = 14, FontWeight w = FontWeight.w700, Color c = _kText, double ls = 0}) =>
-    GoogleFonts.barlowCondensed(fontSize: size, fontWeight: w, color: c, letterSpacing: ls);
+    appCond(size: size, w: w, c: c, ls: ls);
 
 TextStyle _body({double size = 15, FontWeight w = FontWeight.w400, Color c = _kText}) =>
-    GoogleFonts.barlow(fontSize: size, fontWeight: w, color: c);
+    appBody(size: size, w: w, c: c);
 
 /// Identità ricavata dal JWT salvato per popolare l'header del menu.
 class _Identity {
@@ -132,7 +133,7 @@ class _MenuDrawerState extends State<MenuDrawer> {
     Scaffold.of(context).closeEndDrawer();
     messenger.showSnackBar(
       SnackBar(
-        backgroundColor: const Color(0xFF252525),
+        backgroundColor: AppColors.surface,
         content: Text('$label: disponibile a breve',
             style: _body(size: 14, c: _kText)),
       ),
@@ -159,7 +160,7 @@ class _MenuDrawerState extends State<MenuDrawer> {
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF252525),
+        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         title: Text(
           'Vuoi uscire?',
