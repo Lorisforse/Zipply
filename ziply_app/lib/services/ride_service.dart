@@ -1,24 +1,17 @@
-import 'dart:async';
-import 'dart:convert';
-
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/data/models/ride_model.dart';
-import 'package:ziply_app/services/api_exceptions.dart';
+import 'package:ziply_app/services/api_client.dart';
 
-/// Servizio per lo sblocco del mezzo (UT.13): chiamate REST verso ziply_backend.
-/// Allinea le convenzioni di [BookingService] e [VehicleService]: package http,
-/// token JWT da flutter_secure_storage, Exception con messaggi pronti per la UI.
+/// Servizio per lo sblocco e la gestione della corsa (UT.13/UT.15/UT.16):
+/// chiamate REST verso ziply_backend tramite [ApiClient]. Il 401 (sessione
+/// scaduta) è gestito in modo uniforme da [ApiClient]; qui resta la mappatura
+/// dei messaggi di dominio.
 class RideService {
   RideService({http.Client? client, FlutterSecureStorage? storage})
-      : _client = client ?? http.Client(),
-        _storage = storage ?? const FlutterSecureStorage();
+      : _api = ApiClient(client: client, storage: storage);
 
-  final http.Client _client;
-  final FlutterSecureStorage _storage;
-
-  static const Duration _timeout = Duration(seconds: 10);
+  final ApiClient _api;
 
   /// Sblocca per prossimità il mezzo [vehicleId] (POST /rides/unlock,
   /// unlock_method "proximity").
@@ -35,235 +28,84 @@ class RideService {
   /// Termina la corsa [rideId] (POST /rides/{id}/end): la corsa diventa
   /// 'completata' e il mezzo torna disponibile. Restituisce il riepilogo
   /// server-autoritativo (durata, costo già al netto dello sconto, CO2 e
-  /// importo scontato, UT.09); lancia [SessionExpiredException] sul 401,
-  /// altrimenti una Exception con messaggio pronto per la UI.
+  /// importo scontato, UT.09).
   Future<RideEndSummary> endRide(String rideId) async {
-    final token = await _storage.read(key: kTokenKey);
+    final res = await _api.post('/rides/$rideId/end');
 
-    final http.Response response;
-    try {
-      response = await _client.post(
-        Uri.parse('$kBaseUrl/rides/$rideId/end'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      ).timeout(_timeout);
-    } on http.ClientException {
-      throw Exception('Impossibile connettersi al server');
-    } on TimeoutException {
-      throw Exception('Impossibile connettersi al server');
+    if (res.statusCode == 200) {
+      return RideEndSummary.fromJson(res.map ?? const {});
     }
-
-    final body = _decodeBody(response.bodyBytes);
-
-    if (response.statusCode == 200) {
-      return RideEndSummary.fromJson(body ?? const {});
-    }
-    if (response.statusCode == 401) throw const SessionExpiredException();
-
-    final serverMessage = body?['error'];
-    throw Exception(
-      serverMessage is String && serverMessage.isNotEmpty
-          ? serverMessage
-          : 'Impossibile terminare il noleggio',
-    );
+    throw Exception(res.errorMessage ?? 'Impossibile terminare il noleggio');
   }
 
   /// Mette in pausa la corsa [rideId] (POST /rides/{id}/pause).
   /// Restituisce lo stato aggiornato (dovrebbe essere 'paused').
   Future<String> pauseRide(String rideId) async {
-    final token = await _storage.read(key: kTokenKey);
+    final res = await _api.post('/rides/$rideId/pause');
 
-    final http.Response response;
-    try {
-      response = await _client.post(
-        Uri.parse('$kBaseUrl/rides/$rideId/pause'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      ).timeout(_timeout);
-    } on http.ClientException {
-      throw Exception('Impossibile connettersi al server');
-    } on TimeoutException {
-      throw Exception('Impossibile connettersi al server');
+    if (res.statusCode == 200) {
+      return res.map?['status'] as String? ?? 'paused';
     }
-
-    final body = _decodeBody(response.bodyBytes);
-
-    if (response.statusCode == 200) {
-      return body?['status'] as String? ?? 'paused';
-    }
-    if (response.statusCode == 401) throw const SessionExpiredException();
-
-    final serverMessage = body?['error'];
     throw Exception(
-      serverMessage is String && serverMessage.isNotEmpty
-          ? serverMessage
-          : 'Impossibile mettere in pausa il noleggio',
+      res.errorMessage ?? 'Impossibile mettere in pausa il noleggio',
     );
   }
 
   /// Riprende la corsa [rideId] (POST /rides/{id}/resume).
   /// Restituisce lo stato aggiornato (dovrebbe essere 'attiva').
   Future<String> resumeRide(String rideId) async {
-    final token = await _storage.read(key: kTokenKey);
+    final res = await _api.post('/rides/$rideId/resume');
 
-    final http.Response response;
-    try {
-      response = await _client.post(
-        Uri.parse('$kBaseUrl/rides/$rideId/resume'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      ).timeout(_timeout);
-    } on http.ClientException {
-      throw Exception('Impossibile connettersi al server');
-    } on TimeoutException {
-      throw Exception('Impossibile connettersi al server');
+    if (res.statusCode == 200) {
+      return res.map?['status'] as String? ?? 'attiva';
     }
-
-    final body = _decodeBody(response.bodyBytes);
-
-    if (response.statusCode == 200) {
-      return body?['status'] as String? ?? 'attiva';
-    }
-    if (response.statusCode == 401) throw const SessionExpiredException();
-
-    final serverMessage = body?['error'];
     throw Exception(
-      serverMessage is String && serverMessage.isNotEmpty
-          ? serverMessage
-          : 'Impossibile riprendere il noleggio',
+      res.errorMessage ?? 'Impossibile riprendere il noleggio',
     );
   }
 
-  /// UT.16 — Sblocca simultaneamente tutte le corse di un gruppo
-  /// (POST /rides/group/{id}/unlock). Restituisce le corse avviate; lancia
-  /// [SessionExpiredException] sul 401.
+  /// UT.16: Sblocca simultaneamente tutte le corse di un gruppo
+  /// (POST /rides/group/{id}/unlock). Restituisce le corse avviate.
   Future<List<RideModel>> unlockGroup(String groupId) async {
-    final token = await _storage.read(key: kTokenKey);
+    final res = await _api.post('/rides/group/$groupId/unlock');
 
-    final http.Response response;
-    try {
-      response = await _client.post(
-        Uri.parse('$kBaseUrl/rides/group/$groupId/unlock'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      ).timeout(_timeout);
-    } on http.ClientException {
-      throw Exception('Impossibile connettersi al server');
-    } on TimeoutException {
-      throw Exception('Impossibile connettersi al server');
-    }
-
-    final body = _decodeBody(response.bodyBytes);
-
-    if (response.statusCode == 201) {
-      final list = (body?['rides'] as List?) ?? const [];
+    if (res.statusCode == 201) {
+      final list = (res.map?['rides'] as List?) ?? const [];
       return list
           .whereType<Map<String, dynamic>>()
           .map(RideModel.fromJson)
           .toList(growable: false);
     }
-    if (response.statusCode == 401) throw const SessionExpiredException();
-
-    final serverMessage = body?['error'];
-    throw Exception(
-      serverMessage is String && serverMessage.isNotEmpty
-          ? serverMessage
-          : 'Impossibile sbloccare il gruppo',
-    );
+    throw Exception(res.errorMessage ?? 'Impossibile sbloccare il gruppo');
   }
 
-  /// UT.16 — Termina tutte le corse di un gruppo (POST /rides/group/{id}/end) e
+  /// UT.16: Termina tutte le corse di un gruppo (POST /rides/group/{id}/end) e
   /// restituisce il riepilogo aggregato (durata, costo, CO2, sconto sommati).
   Future<RideEndSummary> endGroup(String groupId) async {
-    final token = await _storage.read(key: kTokenKey);
+    final res = await _api.post('/rides/group/$groupId/end');
 
-    final http.Response response;
-    try {
-      response = await _client.post(
-        Uri.parse('$kBaseUrl/rides/group/$groupId/end'),
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      ).timeout(_timeout);
-    } on http.ClientException {
-      throw Exception('Impossibile connettersi al server');
-    } on TimeoutException {
-      throw Exception('Impossibile connettersi al server');
+    if (res.statusCode == 200) {
+      return RideEndSummary.fromJson(res.map ?? const {});
     }
-
-    final body = _decodeBody(response.bodyBytes);
-
-    if (response.statusCode == 200) {
-      return RideEndSummary.fromJson(body ?? const {});
-    }
-    if (response.statusCode == 401) throw const SessionExpiredException();
-
-    final serverMessage = body?['error'];
     throw Exception(
-      serverMessage is String && serverMessage.isNotEmpty
-          ? serverMessage
-          : 'Impossibile terminare il noleggio di gruppo',
+      res.errorMessage ?? 'Impossibile terminare il noleggio di gruppo',
     );
   }
 
-  /// Esegue la POST /rides/unlock con il body indicato. In caso di errore
-  /// lancia una Exception con un messaggio pronto per la UI; per 404/409
-  /// propaga il messaggio del backend ("veicolo non trovato", "prenotazione
-  /// scaduta", ...). Sul 401 lancia [SessionExpiredException].
+  /// Esegue la POST /rides/unlock con il body indicato. Per 404/409 propaga il
+  /// messaggio del backend ("veicolo non trovato", "prenotazione scaduta", ...).
   Future<RideModel> _unlock(Map<String, String> body) async {
-    final token = await _storage.read(key: kTokenKey);
+    final res = await _api.post('/rides/unlock', body: body);
 
-    final http.Response response;
-    try {
-      response = await _client
-          .post(
-            Uri.parse('$kBaseUrl/rides/unlock'),
-            headers: {
-              'Content-Type': 'application/json',
-              if (token != null) 'Authorization': 'Bearer $token',
-            },
-            body: jsonEncode(body),
-          )
-          .timeout(_timeout);
-    } on http.ClientException {
-      throw Exception('Impossibile connettersi al server');
-    } on TimeoutException {
-      throw Exception('Impossibile connettersi al server');
-    }
-
-    final decoded = _decodeBody(response.bodyBytes);
-
-    if (response.statusCode == 201) {
+    if (res.statusCode == 201) {
+      final decoded = res.map;
       if (decoded != null) {
         return RideModel.fromJson(decoded);
       }
       throw Exception('Risposta del server non valida');
     }
 
-    if (response.statusCode == 401) throw const SessionExpiredException();
-
-    throw Exception(_errorMessageFor(response.statusCode, decoded));
-  }
-
-  /// Decodifica il body JSON in modo difensivo, restituendo null se assente o
-  /// non valido.
-  Map<String, dynamic>? _decodeBody(List<int> bytes) {
-    if (bytes.isEmpty) return null;
-    try {
-      final decoded = jsonDecode(utf8.decode(bytes));
-      return decoded is Map<String, dynamic> ? decoded : null;
-    } on FormatException {
-      return null;
-    }
+    throw Exception(_errorMessageFor(res.statusCode, res.map));
   }
 
   /// Mappa uno status code di errore in un messaggio per la UI, preferendo il

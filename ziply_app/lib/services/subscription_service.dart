@@ -1,56 +1,27 @@
-import 'dart:async';
-import 'dart:convert';
-
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/data/models/subscription_model.dart';
-import 'package:ziply_app/services/api_exceptions.dart';
+import 'package:ziply_app/services/api_client.dart';
 
 typedef SubscriptionListResult = ({
   List<SubscriptionModel> subscriptions,
   List<VehicleTypeModel> vehicleTypes,
 });
 
+/// Servizio per gli abbonamenti (UT.22): chiamate REST verso ziply_backend
+/// tramite [ApiClient] (base URL, token JWT, 401 → sessione scaduta).
 class SubscriptionService {
   SubscriptionService({http.Client? client, FlutterSecureStorage? storage})
-      : _client = client ?? http.Client(),
-        _storage = storage ?? const FlutterSecureStorage();
+      : _api = ApiClient(client: client, storage: storage);
 
-  final http.Client _client;
-  final FlutterSecureStorage _storage;
-
-  static const Duration _timeout = Duration(seconds: 10);
-
-  Future<Map<String, String>> _authHeaders() async {
-    final token = await _storage.read(key: kTokenKey);
-    return {
-      'Content-Type': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    };
-  }
+  final ApiClient _api;
 
   /// Recupera gli abbonamenti dell'utente e tutte le tipologie di mezzo disponibili.
   Future<SubscriptionListResult> fetchAll() async {
-    final http.Response response;
-    try {
-      response = await _client
-          .get(
-            Uri.parse('$kBaseUrl/subscriptions'),
-            headers: await _authHeaders(),
-          )
-          .timeout(_timeout);
-    } on http.ClientException {
-      throw Exception('Impossibile connettersi al server');
-    } on TimeoutException {
-      throw Exception('Impossibile connettersi al server');
-    }
+    final res = await _api.get('/subscriptions');
 
-    if (response.statusCode == 401) throw const SessionExpiredException();
-
-    final body = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-
-    if (response.statusCode == 200) {
+    if (res.statusCode == 200) {
+      final body = res.map ?? const <String, dynamic>{};
       final rawSubs = body['subscriptions'] as List<dynamic>? ?? [];
       final rawTypes = body['vehicle_types'] as List<dynamic>? ?? [];
       return (
@@ -63,8 +34,7 @@ class SubscriptionService {
       );
     }
 
-    final errorMsg = body['error'] as String?;
-    throw Exception(errorMsg ?? 'Impossibile recuperare gli abbonamenti');
+    throw Exception(res.errorMessage ?? 'Impossibile recuperare gli abbonamenti');
   }
 
   /// Sottoscrive un abbonamento per la tipologia e la durata indicate.
@@ -72,35 +42,17 @@ class SubscriptionService {
     required String vehicleTypeId,
     required int durationMonths,
   }) async {
-    final http.Response response;
-    try {
-      response = await _client
-          .post(
-            Uri.parse('$kBaseUrl/subscriptions'),
-            headers: await _authHeaders(),
-            body: jsonEncode({
-              'vehicle_type_id': vehicleTypeId,
-              'duration_months': durationMonths,
-            }),
-          )
-          .timeout(_timeout);
-    } on http.ClientException {
-      throw Exception('Impossibile connettersi al server');
-    } on TimeoutException {
-      throw Exception('Impossibile connettersi al server');
+    final res = await _api.post('/subscriptions', body: {
+      'vehicle_type_id': vehicleTypeId,
+      'duration_months': durationMonths,
+    });
+
+    if (res.statusCode == 201) {
+      return SubscriptionModel.fromJson(res.map!);
     }
 
-    if (response.statusCode == 401) throw const SessionExpiredException();
-
-    final body = response.body.isNotEmpty
-        ? jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>?
-        : null;
-
-    if (response.statusCode == 201) {
-      return SubscriptionModel.fromJson(body!);
-    }
-
-    final errorMsg = body?['error'] as String?;
-    throw Exception(errorMsg ?? 'Impossibile sottoscrivere l\'abbonamento');
+    throw Exception(
+      res.errorMessage ?? 'Impossibile sottoscrivere l\'abbonamento',
+    );
   }
 }

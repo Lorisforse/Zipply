@@ -1,22 +1,18 @@
-import 'dart:async';
-import 'dart:convert';
-
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:ziply_app/constants.dart';
 import 'package:ziply_app/core/utils/app_logger.dart';
+import 'package:ziply_app/services/api_client.dart';
 
 /// Servizio di autenticazione: chiamate REST verso ziply_backend e
 /// persistenza del token JWT in storage sicuro.
 class AuthService {
   AuthService({http.Client? client, FlutterSecureStorage? storage})
-      : _client = client ?? http.Client(),
-        _storage = storage ?? const FlutterSecureStorage();
+      : _storage = storage ?? const FlutterSecureStorage(),
+        _api = ApiClient(client: client, storage: storage);
 
-  final http.Client _client;
   final FlutterSecureStorage _storage;
-
-  static const Duration _timeout = Duration(seconds: 10);
+  final ApiClient _api;
 
   /// Effettua il login e restituisce il body JSON della risposta (token + user).
   Future<Map<String, dynamic>> login(String email, String password) async {
@@ -66,32 +62,21 @@ class AuthService {
     await _storage.delete(key: kTokenKey);
   }
 
-  /// Esegue una POST JSON e converte gli errori HTTP o di rete in Exception
-  /// con messaggi human-readable pronti per la UI.
+  /// Esegue una POST JSON pubblica (login/registrazione) e converte gli errori
+  /// HTTP in Exception con messaggi human-readable pronti per la UI. Gli errori
+  /// di rete sono già tradotti da [ApiClient].
   Future<Map<String, dynamic>> _postJson(
     String path,
     Map<String, dynamic> body, {
     required int expectedStatus,
   }) async {
-    final http.Response response;
-    try {
-      response = await _client
-          .post(
-            Uri.parse('$kBaseUrl$path'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(body),
-          )
-          .timeout(_timeout);
-    } on http.ClientException {
-      throw Exception('Impossibile connettersi al server');
-    } on TimeoutException {
-      throw Exception('Impossibile connettersi al server');
+    // authenticated:false → il 401 qui significa "credenziali errate", non
+    // sessione scaduta, quindi va mappato come errore di login.
+    final res = await _api.post(path, body: body, authenticated: false);
+    if (res.statusCode == expectedStatus) {
+      return res.map ?? const <String, dynamic>{};
     }
-
-    if (response.statusCode == expectedStatus) {
-      return jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-    }
-    throw Exception(_errorMessageFor(response.statusCode));
+    throw Exception(_errorMessageFor(res.statusCode));
   }
 
   /// Mappa uno status code di errore del backend in un messaggio per la UI.

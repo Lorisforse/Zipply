@@ -1,11 +1,7 @@
-import 'dart:async';
-import 'dart:convert';
-
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
-import 'package:ziply_app/constants.dart';
-import 'package:ziply_app/services/api_exceptions.dart';
+import 'package:ziply_app/services/api_client.dart';
 
 /// Percorso calcolato dal backend (UT.07): punti da disegnare sulla mappa più
 /// distanza e durata stimate.
@@ -23,10 +19,10 @@ class RouteResult {
   final double distanceKm;
   final double durationMinutes;
 
-  /// UT.03 — stima costo (€) del tragitto per il mezzo selezionato.
+  /// UT.03: stima costo (€) del tragitto per il mezzo selezionato.
   final double estimatedCost;
 
-  /// UT.08 — tipologia consigliata per il tragitto, calcolata dal backend in
+  /// UT.08: tipologia consigliata per il tragitto, calcolata dal backend in
   /// base alla distanza del percorso.
   final SuggestedCategory suggestion;
 
@@ -35,21 +31,18 @@ class RouteResult {
   final bool fallback;
 }
 
-/// UT.08 — categoria di mezzo consigliata per il tragitto, inclusa nella
+/// UT.08: categoria di mezzo consigliata per il tragitto, inclusa nella
 /// risposta del calcolo percorso (POST /routes).
 enum SuggestedCategory { auto, biciScooter, unknown }
 
 /// Calcolo del percorso mezzo→destinazione tramite il backend (POST /routes),
-/// che a sua volta interroga OpenRouteService. Allinea le convenzioni degli
-/// altri service: package http, token JWT da secure storage, 401 → sessione
-/// scaduta.
+/// che a sua volta interroga OpenRouteService. Usa [ApiClient] (base URL, token
+/// JWT, 401 → sessione scaduta).
 class RouteService {
   RouteService({http.Client? client, FlutterSecureStorage? storage})
-      : _client = client ?? http.Client(),
-        _storage = storage ?? const FlutterSecureStorage();
+      : _api = ApiClient(client: client, storage: storage);
 
-  final http.Client _client;
-  final FlutterSecureStorage _storage;
+  final ApiClient _api;
 
   static const Duration _timeout = Duration(seconds: 12);
 
@@ -58,37 +51,21 @@ class RouteService {
     required String vehicleId,
     required LatLng destination,
   }) async {
-    final token = await _storage.read(key: kTokenKey);
+    final res = await _api.post(
+      '/routes',
+      body: {
+        'vehicle_id': vehicleId,
+        'dest_lat': destination.latitude,
+        'dest_lng': destination.longitude,
+      },
+      timeout: _timeout,
+    );
 
-    final http.Response response;
-    try {
-      response = await _client
-          .post(
-            Uri.parse('$kBaseUrl/routes'),
-            headers: {
-              'Content-Type': 'application/json',
-              if (token != null) 'Authorization': 'Bearer $token',
-            },
-            body: jsonEncode({
-              'vehicle_id': vehicleId,
-              'dest_lat': destination.latitude,
-              'dest_lng': destination.longitude,
-            }),
-          )
-          .timeout(_timeout);
-    } on http.ClientException {
-      throw Exception('Impossibile connettersi al server');
-    } on TimeoutException {
-      throw Exception('Impossibile connettersi al server');
-    }
-
-    if (response.statusCode == 401) throw const SessionExpiredException();
-    if (response.statusCode != 200) {
+    if (res.statusCode != 200) {
       throw Exception('Impossibile calcolare il percorso');
     }
 
-    final body =
-        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final body = res.map ?? const <String, dynamic>{};
     final geometry = body['geometry'] as Map<String, dynamic>?;
     final coords = (geometry?['coordinates'] as List<dynamic>?) ?? const [];
     final points = <LatLng>[];
