@@ -1,3 +1,376 @@
-// [WEB] Dashboard principale per operatori.
-// Panoramica KPI: veicoli attivi, corse in corso, ricavi giornalieri.
-// TODO: implementare la dashboard con grafici e tabelle.
+import 'package:flutter/material.dart';
+import 'package:ziply_app/core/theme/app_colors.dart';
+import 'package:ziply_app/core/theme/app_text_styles.dart';
+import 'package:ziply_app/core/utils/app_logger.dart';
+import 'package:ziply_app/data/models/operator_vehicle_model.dart';
+import 'package:ziply_app/presentation/web/auth/web_auth_gate.dart';
+import 'package:ziply_app/presentation/web/fleet/fleet_screen.dart';
+import 'package:ziply_app/services/auth_service.dart';
+import 'package:ziply_app/services/operator_service.dart';
+
+/// Shell della dashboard web operatore: sidebar di navigazione + area
+/// contenuto. Nello Sprint 2 sono attive la panoramica KPI e la mappa flotta in
+/// tempo reale (OP.01); le altre voci (malfunzionamenti, chat, impostazioni)
+/// sono placeholder rinviati allo Sprint 3.
+class DashboardScreen extends StatefulWidget {
+  const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final AuthService _authService = AuthService();
+  final OperatorService _operatorService = OperatorService();
+
+  String _operatorEmail = '';
+  String _operatorRole = '';
+  int _selectedTab = 0;
+
+  List<OperatorVehicleModel> _vehicles = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOperatorInfo();
+  }
+
+  Future<void> _loadOperatorInfo() async {
+    final token = await _authService.getToken();
+    if (token != null && token.isNotEmpty) {
+      try {
+        final claims = decodeJwt(token);
+        setState(() {
+          _operatorEmail = claims['email'] as String? ?? 'N/A';
+          _operatorRole = claims['ruolo'] as String? ?? 'operatore';
+        });
+      } catch (e) {
+        zlog('Errore caricamento info operatore: $e', tag: 'WebDashboard');
+      }
+    }
+    _loadFleet();
+  }
+
+  Future<void> _loadFleet() async {
+    try {
+      final vehicles = await _operatorService.getVehicles();
+      if (mounted) setState(() => _vehicles = vehicles);
+    } catch (e) {
+      zlog('Errore caricamento KPI flotta: $e', tag: 'WebDashboard');
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    await _authService.logout();
+    zlog('Logout completato, reindirizzo...', tag: 'WebDashboard');
+    if (mounted) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (context) => const WebAuthGate()),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      body: Row(
+        children: [
+          _buildSidebar(),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  height: 70,
+                  decoration: const BoxDecoration(
+                    color: AppColors.surface,
+                    border: Border(bottom: BorderSide(color: AppColors.border)),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    children: [
+                      Text(_getTabTitle(), style: appCond(size: 20, w: FontWeight.bold)),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.notifications_none_rounded, color: AppColors.dim),
+                        onPressed: () {},
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: _selectedTab == 1 ? EdgeInsets.zero : const EdgeInsets.all(32),
+                    child: _buildMainContent(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebar() {
+    return Container(
+      width: 260,
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(right: BorderSide(color: AppColors.border)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            // Stesso wordmark dell'app: 'ZIPLY' arancione + sottotitolo.
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text('ZIPLY', style: appCond(size: 24, w: FontWeight.w700, c: AppColors.accent, ls: 1)),
+                const SizedBox(width: 9),
+                Text('DASHBOARD', style: appCond(size: 11, w: FontWeight.w600, c: AppColors.dim, ls: 1.5)),
+              ],
+            ),
+          ),
+          const Divider(color: AppColors.border, height: 1),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+              children: [
+                _buildSidebarItem(icon: Icons.analytics_outlined, label: 'Panoramica KPI', index: 0),
+                _buildSidebarItem(icon: Icons.map_outlined, label: 'Mappa Flotta', index: 1),
+                _buildSidebarItem(icon: Icons.report_problem_outlined, label: 'Malfunzionamenti', index: 2),
+                _buildSidebarItem(icon: Icons.chat_bubble_outline_rounded, label: 'Chat Supporto', index: 3),
+                _buildSidebarItem(icon: Icons.settings_outlined, label: 'Impostazioni', index: 4),
+              ],
+            ),
+          ),
+          const Divider(color: AppColors.border, height: 1),
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: AppColors.surface2,
+                      child: Text(
+                        _operatorEmail.isNotEmpty ? _operatorEmail[0].toUpperCase() : 'O',
+                        style: appCond(c: AppColors.accent, w: FontWeight.bold),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _operatorEmail,
+                            style: appBody(size: 13, c: AppColors.text),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.accent.withValues(alpha: 0.20),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              _operatorRole.toUpperCase(),
+                              style: appCond(size: 9, w: FontWeight.bold, c: AppColors.accent),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: _handleLogout,
+                  icon: const Icon(Icons.logout_rounded, size: 16),
+                  label: const Text('Disconnetti'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.red,
+                    side: BorderSide(color: AppColors.red.withValues(alpha: 0.20)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSidebarItem({required IconData icon, required String label, required int index}) {
+    final isSelected = _selectedTab == index;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: isSelected ? AppColors.accent.withValues(alpha: 0.10) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          onTap: () => setState(() => _selectedTab = index),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Icon(icon, color: isSelected ? AppColors.accent : AppColors.dim, size: 20),
+                const SizedBox(width: 16),
+                Text(
+                  label,
+                  style: appCond(
+                    size: 15,
+                    w: isSelected ? FontWeight.w600 : FontWeight.w500,
+                    c: isSelected ? AppColors.text : AppColors.dim,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _getTabTitle() {
+    switch (_selectedTab) {
+      case 0:
+        return 'Panoramica KPI';
+      case 1:
+        return 'Mappa Flotta';
+      case 2:
+        return 'Malfunzionamenti Segnalati';
+      case 3:
+        return 'Chat Supporto Utenti';
+      case 4:
+        return 'Impostazioni Sistema';
+      default:
+        return '';
+    }
+  }
+
+  Widget _buildMainContent() {
+    switch (_selectedTab) {
+      case 0:
+        return _buildKPIOverview();
+      case 1:
+        return const FleetScreen();
+      default:
+        return _buildComingSoon();
+    }
+  }
+
+  Widget _buildComingSoon() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.construction_rounded, color: AppColors.accent, size: 64),
+          const SizedBox(height: 16),
+          Text('Funzionalità in arrivo', style: appCond(size: 20, w: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text(
+            'Questo modulo sarà completato nello Sprint 3.',
+            style: appBody(c: AppColors.dim),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKPIOverview() {
+    final totale = _vehicles.length;
+    final disponibili = _vehicles.where((v) => v.status == 'disponibile').length;
+    final manutenzione = _vehicles.where((v) => v.status == 'manutenzione').length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Bentornato, Operatore!', style: appCond(size: 28, w: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Text(
+          'Stato attuale della flotta urbana in tempo reale.',
+          style: appBody(size: 15, c: AppColors.dim),
+        ),
+        const SizedBox(height: 40),
+        Row(
+          children: [
+            Expanded(
+              child: _buildKPICard(
+                title: 'Mezzi Totali',
+                value: '$totale',
+                icon: Icons.directions_bike_rounded,
+                color: AppColors.accent,
+              ),
+            ),
+            const SizedBox(width: 24),
+            Expanded(
+              child: _buildKPICard(
+                title: 'Disponibili',
+                value: '$disponibili',
+                icon: Icons.check_circle_outline_rounded,
+                color: AppColors.green,
+              ),
+            ),
+            const SizedBox(width: 24),
+            Expanded(
+              child: _buildKPICard(
+                title: 'In Manutenzione',
+                value: '$manutenzione',
+                icon: Icons.build_circle_outlined,
+                color: AppColors.red,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKPICard({
+    required String title,
+    required String value,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: appCond(size: 15, w: FontWeight.w500, c: AppColors.dim)),
+              const SizedBox(height: 12),
+              Text(value, style: appCond(size: 36, w: FontWeight.bold)),
+            ],
+          ),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 28),
+          ),
+        ],
+      ),
+    );
+  }
+}

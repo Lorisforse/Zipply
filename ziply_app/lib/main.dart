@@ -5,6 +5,7 @@ import 'package:ziply_app/core/theme/app_theme.dart';
 import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/presentation/mobile/auth/login_screen.dart';
 import 'package:ziply_app/presentation/mobile/map/map_screen.dart';
+import 'package:ziply_app/presentation/web/auth/web_auth_gate.dart';
 import 'package:ziply_app/services/auth_service.dart';
 
 // Logica di piattaforma:
@@ -28,12 +29,9 @@ class ZiplyApp extends StatelessWidget {
       title: 'Ziply',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
+      // Mobile (iOS/Android) → app utente; Web → dashboard operatore/amministrazione.
       // TODO: sostituire con GoRouter quando sono pronte più schermate
-      home: kIsWeb
-          ? const Scaffold(
-              body: Center(child: Text('Web UI — coming soon')),
-            )
-          : const AuthGate(),
+      home: kIsWeb ? const WebAuthGate() : const AuthGate(),
     );
   }
 }

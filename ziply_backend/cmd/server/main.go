@@ -72,6 +72,11 @@ func main() {
 	routeUsecase := usecase.NewRouteUsecase(vehicleRepo, forbiddenZoneRepo, ors.New(), discountRepo)
 	routeHandler := handler.NewRouteHandler(routeUsecase)
 
+	// OP.01 — Area operatore: monitoraggio in tempo reale della flotta.
+	operatorRepo := repository.NewOperatorRepository(pool)
+	operatorUsecase := usecase.NewOperatorUsecase(operatorRepo)
+	operatorHandler := handler.NewOperatorHandler(operatorUsecase)
+
 	mux := http.NewServeMux()
 
 	// Public routes.
@@ -107,6 +112,12 @@ func main() {
 
 	// UT.11 — Segnalazione malfunzionamento
 	mux.Handle("POST /malfunction-reports", middleware.JWTAuth(http.HandlerFunc(malfunctionHandler.Create)))
+
+	// OP.01 — Mappa flotta in tempo reale. Riservata a operatori e amministrazione
+	// pubblica: JWT valido + ruolo autorizzato (RequireRole).
+	mux.Handle("GET /operator/vehicles", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(operatorHandler.ListVehicles)),
+	))
 
 	// UT.10 — Chat di assistenza ibrida bot/operatore
 	chatRepo := repository.NewChatRepository(pool)
