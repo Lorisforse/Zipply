@@ -45,7 +45,7 @@ dependencies:
   # Font Google (Barlow / Barlow Condensed)
   google_fonts: ^6.2.1
   flutter_local_notifications: ^22.0.1
-  timezone: ^0.11.0
+  timezone: ^0.9.4
   share_plus: ^12.0.2
 
 dev_dependencies:
