@@ -139,9 +139,10 @@ func main() {
 		port = "8080"
 	}
 
-	// Logging middleware attorno all'intero mux: una riga di log per ogni
-	// chiamata a un endpoint (metodo, path, status, durata).
-	handler := middleware.Logging(mux)
+	// Middleware attorno all'intero mux: CORS all'esterno (gestisce il preflight
+	// OPTIONS per la dashboard web cross-origin, es. `flutter run -d chrome`),
+	// poi Logging (una riga di log per chiamata: metodo, path, status, durata).
+	handler := middleware.CORS(middleware.Logging(mux))
 
 	log.Printf("[AUTH] server listening on :%s", port)
 	if err := http.ListenAndServe(":"+port, handler); err != nil {

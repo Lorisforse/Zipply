@@ -1,0 +1,14 @@
+# Riduce il contesto di build della web image: niente artefatti né piattaforme
+# native (la build web non ne ha bisogno).
+build/
+.dart_tool/
+.idea/
+.vscode/
+android/
+ios/
+linux/
+macos/
+windows/
+*.iml
+.flutter-plugins
+.flutter-plugins-dependencies

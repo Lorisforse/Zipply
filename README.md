@@ -20,6 +20,7 @@ Flutter App  --REST/JSON-->  Backend Go  --SQL-->  PostgreSQL
 
 ## Indice
 
+0. [Avvio rapido con Docker](#0-avvio-rapido-con-docker)
 1. [Prerequisiti](#1-prerequisiti)
 2. [Database PostgreSQL](#2-database-postgresql)
 3. [Backend Go](#3-backend-go)
@@ -27,11 +28,55 @@ Flutter App  --REST/JSON-->  Backend Go  --SQL-->  PostgreSQL
 5. [Variabili d'ambiente del backend](#5-variabili-dambiente-del-backend)
 6. [Endpoint API](#6-endpoint-api)
 
+Ci sono **due modi** per eseguire il progetto in locale:
+
+- **Con Docker** (sezione 0): un solo comando avvia database, backend e dashboard web già pronti. Il più semplice, non richiede Go né Flutter per la parte web.
+- **A mano** (sezioni 1-5): installando PostgreSQL, Go e Flutter. Massimo controllo, utile per lo sviluppo.
+
+In entrambi i casi, per l'**app mobile** serve comunque Flutter.
+
+---
+
+## 0. Avvio rapido con Docker
+
+Richiede solo [Docker](https://docs.docker.com/get-docker/) (con Docker Compose). Dalla radice del repo:
+
+```bash
+docker compose -f docker-compose.local.yml up --build
+```
+
+Vengono avviati tre servizi: **PostgreSQL** (con schema e dati di esempio caricati
+automaticamente), **backend Go** e **dashboard web** (Flutter Web servita da nginx).
+
+| Cosa | URL |
+|------|-----|
+| Dashboard web (operatore/amministrazione) | http://localhost |
+| API (proxy verso il backend) | http://localhost/api |
+| Backend diretto (per l'app mobile) | http://localhost:8080 |
+
+**Credenziali della dashboard web** (create dal seed `005_seed_operator.sql`):
+
+| Ruolo | Email | Password |
+|-------|-------|----------|
+| Operatore | `operatore@ziply.it` | `operatore123` |
+| Amministrazione | `amministrazione@ziply.it` | `admin123` |
+
+Per azzerare il database e rieseguire gli script di init:
+
+```bash
+docker compose -f docker-compose.local.yml down -v
+```
+
+> L'app mobile non è containerizzata: avviala con Flutter (sezione 4) puntandola a
+> `http://localhost:8080` (emulatore Android: `http://10.0.2.2:8080`).
+
 ---
 
 ## 1. Prerequisiti
 
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) **≥ 3.19** (Dart ≥ 3.3)
+> In alternativa a tutto ciò che segue, puoi usare Docker: vedi la [sezione 0](#0-avvio-rapido-con-docker).
+
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) **≥ 3.27** (Dart ≥ 3.6)
 - [Go](https://go.dev/dl/) **≥ 1.22**
 - [PostgreSQL](https://www.postgresql.org/download/) **≥ 14**
 - Un dispositivo o emulatore (Android/iOS) **oppure** Google Chrome (per la versione web)
@@ -65,6 +110,21 @@ la mappa.
    ```bash
    psql -U postgres -d ziply -f ziply_backend/schema.sql
    ```
+
+3. Applicare le migrazioni Sprint 2 e il seed degli account staff (necessari per la
+   dashboard web e per le funzionalità dello Sprint 2):
+
+   ```bash
+   psql -U postgres -d ziply -f ziply_backend/migrations/002_sprint2.sql
+   psql -U postgres -d ziply -f ziply_backend/migrations/003_ut16_booking_group.sql
+   psql -U postgres -d ziply -f ziply_backend/migrations/004_ut11_malfunction_reports_ride.sql
+   psql -U postgres -d ziply -f ziply_backend/migrations/005_seed_operator.sql
+   ```
+
+   > `001_create_users.sql` è già inclusa in `schema.sql`, quindi si salta. Il seed `005`
+   > crea gli account della dashboard (`operatore@ziply.it` / `operatore123` e
+   > `amministrazione@ziply.it` / `admin123`). Con l'avvio Docker (sezione 0) tutto questo
+   > è già automatico.
 
 <details>
 <summary>Contenuto di <code>schema.sql</code> (clicca per espandere)</summary>
@@ -216,15 +276,34 @@ flutter pub get
 flutter run            # selezionare il dispositivo/emulatore quando richiesto
 ```
 
-Per la versione **web**:
+Per la versione **web** (dashboard per operatori e amministrazione pubblica):
 
 ```bash
 flutter run -d chrome
 ```
 
+La dashboard web è riservata ai ruoli `operatore` e `amministrazione`: accedi con le
+credenziali del seed (vedi tabella nella [sezione 0](#0-avvio-rapido-con-docker)).
+
 Di default l'app usa il backend locale (`http://localhost:8080`). Per puntarla a un altro
-backend (ad esempio un proprio server) basta cambiare il valore di `kBaseUrl` nel file
-[`ziply_app/lib/constants.dart`](ziply_app/lib/constants.dart).
+backend (ad esempio il proprio server), **senza modificare il codice**, si passa `BASE_URL`
+a build-time:
+
+```bash
+# web verso un backend remoto
+flutter run -d chrome --dart-define=BASE_URL=https://miohost/ziply/api
+flutter build web      --dart-define=BASE_URL=https://miohost/ziply/api
+
+# app mobile (emulatore Android → il backend locale è 10.0.2.2, non localhost)
+flutter run --dart-define=BASE_URL=http://10.0.2.2:8080
+```
+
+> La dashboard web gira nel browser: se frontend e backend sono su **origini diverse**
+> (es. `flutter run -d chrome` che chiama `localhost:8080`) servono gli header CORS, già
+> abilitati nel backend e configurabili con `CORS_ALLOWED_ORIGINS` (vedi
+> [sezione 5](#5-variabili-dambiente-del-backend)). Se invece la web è servita dallo stesso
+> host del backend (come nell'avvio Docker della [sezione 0](#0-avvio-rapido-con-docker)),
+> è tutto same-origin e il CORS non entra nemmeno in gioco.
 
 ---
 
@@ -244,6 +323,7 @@ si avvia il backend e **prima** di lanciare `go run` (vedi i comandi nella
 | `JWT_SECRET` | Sì | - | Segreto per firmare i token JWT |
 | `JWT_TTL_HOURS` | No | `720` (30 giorni) | Durata del token in ore |
 | `SERVER_PORT` | No | `8080` | Porta su cui il server ascolta |
+| `CORS_ALLOWED_ORIGINS` | No | `*` | Origini ammesse per la dashboard web (lista separata da virgola); `*` = qualsiasi |
 
 ---
 
@@ -255,6 +335,7 @@ si avvia il backend e **prima** di lanciare `go run` (vedi i comandi nella
 | POST | `/auth/login` | - | Login (restituisce JWT) |
 | GET | `/forbidden-zones` | - | Zone vietate attive |
 | GET | `/vehicles` | JWT | Mezzi disponibili (filtro opzionale `?lat=&lng=&radius=`) |
+| GET | `/operator/vehicles` | JWT (operatore/amministrazione) | Intera flotta con stato e carica (dashboard web, OP.01) |
 | POST | `/bookings` | JWT | Prenota un mezzo (15 min) |
 | POST | `/bookings/{id}/cancel` | JWT | Annulla la prenotazione |
 | POST | `/rides/unlock` | JWT | Sblocca il mezzo e avvia la corsa (prossimità o QR) |

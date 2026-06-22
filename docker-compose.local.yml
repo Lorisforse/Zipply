@@ -1,0 +1,71 @@
+# Stack locale completo Ziply: Postgres + backend Go + dashboard web (nginx).
+# Pensato per la consegna: il valutatore avvia tutto con un comando, senza dover
+# installare Go/Flutter per la dashboard web (per l'app mobile serve Flutter).
+#
+#   docker compose -f docker-compose.local.yml up --build
+#
+#   Dashboard web : http://localhost
+#   API (proxy)   : http://localhost/api
+#   Backend diretto (per l'app mobile): http://localhost:8080
+#
+# Reset completo del database (riesegue gli script di init):
+#   docker compose -f docker-compose.local.yml down -v
+#
+# NB: questo file è SOLO per l'esecuzione locale. Il deploy in produzione usa
+# ziply_backend/docker-compose.yml (Jenkins + reti esterne) ed è indipendente.
+name: ziply-local
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ziply
+      POSTGRES_PASSWORD: ziply_password
+      POSTGRES_DB: ziply_db
+    volumes:
+      - ziply_pgdata:/var/lib/postgresql/data
+      # Init (solo al primo avvio, ordine alfabetico): schema base Sprint 1 →
+      # tabelle Sprint 2 → seed account operatore/amministrazione.
+      - ./ziply_backend/schema.sql:/docker-entrypoint-initdb.d/00_schema.sql:ro
+      - ./ziply_backend/migrations/002_sprint2.sql:/docker-entrypoint-initdb.d/02_sprint2.sql:ro
+      - ./ziply_backend/migrations/003_ut16_booking_group.sql:/docker-entrypoint-initdb.d/03_ut16.sql:ro
+      - ./ziply_backend/migrations/004_ut11_malfunction_reports_ride.sql:/docker-entrypoint-initdb.d/04_ut11.sql:ro
+      - ./ziply_backend/migrations/005_seed_operator.sql:/docker-entrypoint-initdb.d/05_seed_operator.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ziply -d ziply_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./ziply_backend
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ziply_db
+      DB_USER: ziply
+      DB_PASSWORD: ziply_password
+      JWT_SECRET: ziply_jwt_secret_dev
+      SERVER_PORT: "8080"
+      CORS_ALLOWED_ORIGINS: "*"
+    ports:
+      - "8080:8080" # backend diretto, raggiungibile dall'app mobile (flutter run)
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./ziply_app
+      dockerfile: Dockerfile.web
+      args:
+        BASE_URL: /api
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  ziply_pgdata:

@@ -1,0 +1,79 @@
+pipeline {
+    agent any
+
+    triggers {
+        pollSCM('H/2 * * * *')
+    }
+
+    environment {
+        DEPLOY_DIR        = '/opt/ziply/frontend'
+        REPO_URL          = 'https://github.com/Lorisforse/Zipply.git'
+        BRANCH            = 'main'
+        APP_SUBDIR        = 'ziply_app'
+        SMOKE_URL         = 'http://localhost:80/'
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        disableConcurrentBuilds()
+        timestamps()
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: "${BRANCH}", credentialsId: 'github-token', url: "${REPO_URL}"
+            }
+        }
+        stage('Prepare deploy dir') {
+            steps {
+                sh '''
+                mkdir -p $DEPLOY_DIR
+                rm -rf /tmp/ziply-frontend-deploy
+                mkdir -p /tmp/ziply-frontend-deploy
+                cp -a $APP_SUBDIR/. /tmp/ziply-frontend-deploy/
+                rm -rf /tmp/ziply-frontend-deploy/.git
+                cp -a /tmp/ziply-frontend-deploy/. $DEPLOY_DIR/
+                rm -rf /tmp/ziply-frontend-deploy
+                '''
+            }
+        }
+        stage('Build and deploy') {
+            steps {
+                sh '''
+                cd $DEPLOY_DIR
+                docker compose build
+                docker compose up -d --force-recreate
+                '''
+            }
+        }
+        stage('Verify') {
+            steps {
+                sh '''
+                sleep 5
+                cd $DEPLOY_DIR
+                CONTAINER_ID=$(docker compose ps -q frontend)
+                [ -z "$CONTAINER_ID" ] && { echo "container non trovato"; docker compose logs --tail=50; exit 1; }
+                STATUS=$(docker inspect --format='{{.State.Status}}' "$CONTAINER_ID")
+                echo "Stato: $STATUS"
+                [ "$STATUS" != "running" ] && { docker compose logs --tail=80; exit 1; }
+                for i in $(seq 1 10); do
+                  CODE=$(docker run --rm --network "container:ziply-frontend" curlimages/curl:latest -s -o /dev/null -w '%{http_code}' "$SMOKE_URL" || true)
+                  echo "Tentativo $i: HTTP $CODE"
+                  if [ "$CODE" = "200" ]; then
+                    HTML=$(docker run --rm --network "container:ziply-frontend" curlimages/curl:latest -s "$SMOKE_URL" || true)
+                    if echo "$HTML" | grep -q "ziply_app"; then
+                      echo "OK: frontend online"; exit 0;
+                    else
+                      echo "Titolo non trovato nell'HTML";
+                    fi
+                  fi
+                  sleep 3
+                done
+                echo "ERRORE: il frontend non risponde correttamente"; docker compose logs --tail=80; exit 1
+                '''
+            }
+        }
+    }
+    post { always { cleanWs() } }
+}

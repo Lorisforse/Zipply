@@ -1,0 +1,19 @@
+services:
+  frontend:
+    image: ziply-frontend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        BASE_URL: /ziply/api
+        BASE_HREF: /ziply/
+    container_name: ziply-frontend
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    networks:
+      - nefta_webnet
+
+networks:
+  nefta_webnet:
+    external: true
