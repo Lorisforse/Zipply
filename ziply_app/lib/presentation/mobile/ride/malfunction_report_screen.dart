@@ -316,7 +316,7 @@ class _MalfunctionReportScreenState extends State<MalfunctionReportScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _kAccent,
                       foregroundColor: _kBg,
-                      disabledBackgroundColor: _kAccent.withOpacity(0.6),
+                      disabledBackgroundColor: _kAccent.withValues(alpha: 0.6),
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(4),

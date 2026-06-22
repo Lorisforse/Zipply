@@ -342,8 +342,8 @@ class _VehicleBottomSheetState extends State<VehicleBottomSheet> {
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    color: _kGreen.withOpacity(0.08),
-                    border: Border.all(color: _kGreen.withOpacity(0.5)),
+                    color: _kGreen.withValues(alpha: 0.08),
+                    border: Border.all(color: _kGreen.withValues(alpha: 0.5)),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Row(

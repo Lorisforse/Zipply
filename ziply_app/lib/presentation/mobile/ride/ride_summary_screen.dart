@@ -327,9 +327,9 @@ class _SuccessBadge extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: _kGreen.withOpacity(0.08),
+                color: _kGreen.withValues(alpha: 0.08),
                 border: Border.all(
-                  color: _kGreen.withOpacity(0.9),
+                  color: _kGreen.withValues(alpha: 0.9),
                   width: 2,
                 ),
               ),
@@ -492,8 +492,8 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(7, 4, 7, 3),
       decoration: BoxDecoration(
-        color: _kGreen.withOpacity(0.10),
-        border: Border.all(color: _kGreen.withOpacity(0.55)),
+        color: _kGreen.withValues(alpha: 0.10),
+        border: Border.all(color: _kGreen.withValues(alpha: 0.55)),
         borderRadius: BorderRadius.circular(2),
       ),
       child: Text(

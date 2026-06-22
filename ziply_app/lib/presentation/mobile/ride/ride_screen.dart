@@ -386,7 +386,7 @@ class _ActiveRentalBannerState extends State<_ActiveRentalBanner> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AppColors.green.withOpacity(0.12),
+                        color: AppColors.green.withValues(alpha: 0.12),
                         border: Border.all(color: AppColors.green),
                         borderRadius: BorderRadius.circular(3),
                       ),

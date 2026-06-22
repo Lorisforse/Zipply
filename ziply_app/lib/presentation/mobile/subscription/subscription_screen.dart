@@ -246,7 +246,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: _kSurface,
-          border: Border.all(color: _kGreen.withOpacity(0.4)),
+          border: Border.all(color: _kGreen.withValues(alpha: 0.4)),
           borderRadius: BorderRadius.circular(6),
         ),
         child: Row(
@@ -269,7 +269,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: _kGreen.withOpacity(0.12),
+                color: _kGreen.withValues(alpha: 0.12),
                 border: Border.all(color: _kGreen),
                 borderRadius: BorderRadius.circular(3),
               ),
@@ -314,8 +314,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 12),
               decoration: BoxDecoration(
-                color: _kGreen.withOpacity(0.08),
-                border: Border.all(color: _kGreen.withOpacity(0.4)),
+                color: _kGreen.withValues(alpha: 0.08),
+                border: Border.all(color: _kGreen.withValues(alpha: 0.4)),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Column(
@@ -343,7 +343,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
-                      color: selected ? _kAccent.withOpacity(0.15) : Colors.transparent,
+                      color: selected ? _kAccent.withValues(alpha: 0.15) : Colors.transparent,
                       border: Border.all(color: selected ? _kAccent : _kBorder),
                       borderRadius: BorderRadius.circular(4),
                     ),
@@ -381,7 +381,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _kAccent,
                       foregroundColor: _kBg,
-                      disabledBackgroundColor: _kAccent.withOpacity(0.5),
+                      disabledBackgroundColor: _kAccent.withValues(alpha: 0.5),
                       elevation: 0,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                       padding: const EdgeInsets.symmetric(horizontal: 20),

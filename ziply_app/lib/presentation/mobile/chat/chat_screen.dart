@@ -187,7 +187,7 @@ class _EscalationBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      color: _kAccent.withOpacity(0.12),
+      color: _kAccent.withValues(alpha: 0.12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [
@@ -336,7 +336,7 @@ class _InputBar extends StatelessWidget {
               style: ElevatedButton.styleFrom(
                 backgroundColor: _kAccent,
                 foregroundColor: _kBg,
-                disabledBackgroundColor: _kAccent.withOpacity(0.5),
+                disabledBackgroundColor: _kAccent.withValues(alpha: 0.5),
                 elevation: 0,
                 padding: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

@@ -127,18 +127,7 @@ class _MenuDrawerState extends State<MenuDrawer> {
 
 
 
-  /// Voce non ancora implementata: chiude il drawer e avvisa l'utente.
-  void _notAvailable(String label) {
-    final messenger = ScaffoldMessenger.of(context);
-    Scaffold.of(context).closeEndDrawer();
-    messenger.showSnackBar(
-      SnackBar(
-        backgroundColor: AppColors.surface,
-        content: Text('$label: disponibile a breve',
-            style: _body(size: 14, c: _kText)),
-      ),
-    );
-  }
+  // (Le voci senza use case sono state rimosse: niente azione "non disponibile".)
 
   /// Logout: azione distruttiva, quindi prima chiede conferma; solo se
   /// confermata pulisce il token e torna al login svuotando lo stack.
@@ -229,11 +218,6 @@ class _MenuDrawerState extends State<MenuDrawer> {
               onTap: _openSubscriptions,
             ),
             _MenuItem(
-              icon: Icons.history,
-              label: 'Storico corse',
-              onTap: () => _notAvailable('Storico corse'),
-            ),
-            _MenuItem(
               icon: Icons.credit_card,
               label: 'Metodi di pagamento',
               onTap: _openPaymentMethods,
@@ -242,11 +226,6 @@ class _MenuDrawerState extends State<MenuDrawer> {
               icon: Icons.support_agent_outlined,
               label: 'Supporto',
               onTap: _openChat,
-            ),
-            _MenuItem(
-              icon: Icons.tune,
-              label: 'Impostazioni',
-              onTap: () => _notAvailable('Impostazioni'),
             ),
 
             const Spacer(),
@@ -317,7 +296,7 @@ class _ProfileHeader extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: _kAccent.withOpacity(0.10),
+                          color: _kAccent.withValues(alpha: 0.10),
                           border: Border.all(color: _kAccent),
                           borderRadius: BorderRadius.circular(2),
                         ),
@@ -370,7 +349,7 @@ class _MenuItem extends StatelessWidget {
               width: 3,
             ),
           ),
-          color: active ? _kAccent.withOpacity(0.10) : Colors.transparent,
+          color: active ? _kAccent.withValues(alpha: 0.10) : Colors.transparent,
         ),
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Row(

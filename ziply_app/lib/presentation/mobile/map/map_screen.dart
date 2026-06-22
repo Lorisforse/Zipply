@@ -2370,15 +2370,15 @@ class _BookingPanelState extends State<_BookingPanel> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: _kAccent.withOpacity(0.08),
+        color: _kAccent.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: _kAccent.withOpacity(0.35)),
+        border: Border.all(color: _kAccent.withValues(alpha: 0.35)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(Icons.event_available_outlined,
-              size: 16, color: _kAccent.withOpacity(0.8)),
+              size: 16, color: _kAccent.withValues(alpha: 0.8)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -2405,9 +2405,9 @@ class _BookingPanelState extends State<_BookingPanel> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: _kGreen.withOpacity(0.12),
+        color: _kGreen.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: _kGreen.withOpacity(0.4)),
+        border: Border.all(color: _kGreen.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
