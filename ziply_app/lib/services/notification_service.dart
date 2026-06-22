@@ -41,7 +41,7 @@ class NotificationService {
       iOS: initializationSettingsDarwin,
     );
 
-    await _notificationsPlugin.initialize(settings: initializationSettings);
+    await _notificationsPlugin.initialize(initializationSettings);
 
     // Su Android 13+ richiede esplicitamente i permessi di notifica
     if (Platform.isAndroid) {
@@ -147,12 +147,14 @@ class NotificationService {
 
     try {
       await _notificationsPlugin.zonedSchedule(
-        id: 100,
-        title: notifTitle,
-        body: notifBody,
-        scheduledDate: tzAlertTime,
-        notificationDetails: details,
+        100,
+        notifTitle,
+        notifBody,
+        tzAlertTime,
+        details,
         androidScheduleMode: scheduleMode,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
         payload: booking.id,
       );
     } catch (e) {
@@ -169,7 +171,7 @@ class NotificationService {
   /// Annulla una notifica schedulata (es. in caso di sblocco anticipato o cancellazione).
   Future<void> cancelNotification(int id) async {
     if (kIsWeb) return;
-    await _notificationsPlugin.cancel(id: id);
+    await _notificationsPlugin.cancel(id);
     zlog('Notifica con ID $id cancellata', tag: 'Notifications');
   }
 }
