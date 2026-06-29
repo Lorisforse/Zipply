@@ -239,7 +239,8 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
           child: FlutterMap(
             mapController: _mapController,
             options: const MapOptions(
-              initialCenter: LatLng(45.4654, 9.1859),
+              // Centro di default: Bari.
+              initialCenter: LatLng(41.1257, 16.8694),
               initialZoom: 14.0,
               maxZoom: 18.0,
               minZoom: 11.0,

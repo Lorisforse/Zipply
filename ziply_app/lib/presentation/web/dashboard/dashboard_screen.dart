@@ -9,9 +9,9 @@ import 'package:ziply_app/services/auth_service.dart';
 import 'package:ziply_app/services/operator_service.dart';
 
 /// Shell della dashboard web operatore: sidebar di navigazione + area
-/// contenuto. Nello Sprint 2 sono attive la panoramica KPI e la mappa flotta in
-/// tempo reale (OP.01); le altre voci (malfunzionamenti, chat, impostazioni)
-/// sono placeholder rinviati allo Sprint 3.
+/// contenuto. Sono attive la panoramica KPI e la mappa flotta in tempo reale
+/// (OP.01). Le voci "Malfunzionamenti" e "Chat Supporto" sono mostrate ma non
+/// selezionabili (nessuna azione al tocco).
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -61,6 +61,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _handleLogout() async {
+    final confirmed = await _confirmLogout();
+    if (confirmed != true || !mounted) return;
     await _authService.logout();
     zlog('Logout completato, reindirizzo...', tag: 'WebDashboard');
     if (mounted) {
@@ -68,6 +70,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
         MaterialPageRoute(builder: (context) => const WebAuthGate()),
       );
     }
+  }
+
+  /// Dialog di conferma prima del logout (azione distruttiva).
+  Future<bool?> _confirmLogout() {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        title: Text('Disconnettersi?', style: appCond(size: 20, w: FontWeight.bold)),
+        content: Text(
+          'Dovrai accedere di nuovo per rientrare nella dashboard.',
+          style: appBody(size: 14, c: AppColors.dim),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('ANNULLA', style: appCond(size: 14, w: FontWeight.w600, c: AppColors.dim)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('DISCONNETTI', style: appCond(size: 14, w: FontWeight.w600, c: AppColors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -142,9 +170,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 _buildSidebarItem(icon: Icons.analytics_outlined, label: 'Panoramica KPI', index: 0),
                 _buildSidebarItem(icon: Icons.map_outlined, label: 'Mappa Flotta', index: 1),
-                _buildSidebarItem(icon: Icons.report_problem_outlined, label: 'Malfunzionamenti', index: 2),
-                _buildSidebarItem(icon: Icons.chat_bubble_outline_rounded, label: 'Chat Supporto', index: 3),
-                _buildSidebarItem(icon: Icons.settings_outlined, label: 'Impostazioni', index: 4),
+                // Voci mostrate ma non selezionabili: nessuna azione al tocco.
+                _buildSidebarItem(icon: Icons.report_problem_outlined, label: 'Malfunzionamenti', index: 2, enabled: false),
+                _buildSidebarItem(icon: Icons.chat_bubble_outline_rounded, label: 'Chat Supporto', index: 3, enabled: false),
               ],
             ),
           ),
@@ -210,31 +238,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildSidebarItem({required IconData icon, required String label, required int index}) {
-    final isSelected = _selectedTab == index;
+  Widget _buildSidebarItem({
+    required IconData icon,
+    required String label,
+    required int index,
+    bool enabled = true,
+  }) {
+    final isSelected = enabled && _selectedTab == index;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Material(
         color: isSelected ? AppColors.accent.withValues(alpha: 0.10) : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
-          onTap: () => setState(() => _selectedTab = index),
+          onTap: enabled ? () => setState(() => _selectedTab = index) : null,
           borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
-              children: [
-                Icon(icon, color: isSelected ? AppColors.accent : AppColors.dim, size: 20),
-                const SizedBox(width: 16),
-                Text(
-                  label,
-                  style: appCond(
-                    size: 15,
-                    w: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    c: isSelected ? AppColors.text : AppColors.dim,
+          child: Opacity(
+            opacity: enabled ? 1.0 : 0.45,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Icon(icon, color: isSelected ? AppColors.accent : AppColors.dim, size: 20),
+                  const SizedBox(width: 16),
+                  Text(
+                    label,
+                    style: appCond(
+                      size: 15,
+                      w: isSelected ? FontWeight.w600 : FontWeight.w500,
+                      c: isSelected ? AppColors.text : AppColors.dim,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -244,48 +280,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String _getTabTitle() {
     switch (_selectedTab) {
-      case 0:
-        return 'Panoramica KPI';
       case 1:
         return 'Mappa Flotta';
-      case 2:
-        return 'Malfunzionamenti Segnalati';
-      case 3:
-        return 'Chat Supporto Utenti';
-      case 4:
-        return 'Impostazioni Sistema';
+      case 0:
       default:
-        return '';
+        return 'Panoramica KPI';
     }
   }
 
   Widget _buildMainContent() {
     switch (_selectedTab) {
-      case 0:
-        return _buildKPIOverview();
       case 1:
         return const FleetScreen();
+      case 0:
       default:
-        return _buildComingSoon();
+        return _buildKPIOverview();
     }
-  }
-
-  Widget _buildComingSoon() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.construction_rounded, color: AppColors.accent, size: 64),
-          const SizedBox(height: 16),
-          Text('Funzionalità in arrivo', style: appCond(size: 20, w: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Text(
-            'Questo modulo sarà completato nello Sprint 3.',
-            style: appBody(c: AppColors.dim),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildKPIOverview() {
