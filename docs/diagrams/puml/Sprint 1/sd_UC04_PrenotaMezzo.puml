@@ -11,40 +11,54 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : prenotaMezzo(vehicleID, tipoPrenotazione)
+activate App
 
 App -> App : verificaTokenValido()
 
-alt ~[token_non_valido~]
+alt token_non_valido
     App --> Utente : reindirizzaLogin()
-else ~[token_valido~]
+    deactivate App
+else token_valido
 
     App -> Backend : POST /bookings\n{ vehicleID, tipoPrenotazione }
+    activate Backend
 
     Backend -> DB : findVehicleByID(vehicleID)
+    activate DB
     DB --> Backend : risultato
+    deactivate DB
 
-    alt ~[mezzo_non_disponibile~]
+    alt mezzo_non_disponibile
         Backend --> App : 409 Conflict\n{ error: "mezzo non disponibile" }
+        deactivate Backend
         App --> Utente : mostraErrore("Mezzo non più disponibile")
-    else ~[mezzo_disponibile~]
+    else mezzo_disponibile
 
         Backend -> DB : findActiveBookingByUser(userID)
+        activate DB
         DB --> Backend : risultato
+        deactivate DB
 
-        alt ~[prenotazione_attiva_esistente~]
+        alt prenotazione_attiva_esistente
             Backend --> App : 409 Conflict\n{ error: "prenotazione già attiva" }
+            deactivate Backend
             App --> Utente : mostraErrore("Hai già una prenotazione attiva")
-        else ~[nessuna_prenotazione_attiva~]
+        else nessuna_prenotazione_attiva
 
             Backend -> Backend : calcolaScadenzaPrenotazione(\n  tipoPrenotazione)
 
             Backend -> DB : insertBooking(\n  userID, vehicleID,\n  tipoPrenotazione, scadenza)
+            activate DB
             DB --> Backend : bookingID
+            deactivate DB
 
             Backend -> DB : updateVehicleStato(\n  vehicleID, "prenotato")
+            activate DB
             DB --> Backend : ok
+            deactivate DB
 
             Backend --> App : 201 Created\n{ bookingID, scadenza }
+            deactivate Backend
 
             App -> App : avviaCountdownScadenza(scadenza)
 
@@ -52,6 +66,8 @@ else ~[token_valido~]
         end
 
     end
+
+    deactivate App
 
 end
 

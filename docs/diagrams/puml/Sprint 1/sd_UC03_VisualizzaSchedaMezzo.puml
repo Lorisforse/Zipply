@@ -11,26 +11,36 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : selezionaMezzo(vehicleID)
+activate App
 
 App -> Backend : GET /vehicles/{vehicleID}
+activate Backend
 
 Backend -> DB : findVehicleByID(vehicleID)
+activate DB
 DB --> Backend : risultato
+deactivate DB
 
-alt ~[mezzo_non_trovato~]
+alt mezzo_non_trovato
     Backend --> App : 404 Not Found\n{ error: "mezzo non disponibile" }
+    deactivate Backend
     App --> Utente : mostraErrore("Mezzo non disponibile")
-else ~[mezzo_trovato~]
+    deactivate App
+else mezzo_trovato
     Backend -> DB : findVehicleType(typeID)
+    activate DB
     DB --> Backend : dettagliTipo
+    deactivate DB
 
     Backend -> Backend : calcolaStatoMezzo(\n  batteria, posizione,\n  statoPrenotazione)
 
     Backend --> App : 200 OK\n{ vehicle, type, status }
+    deactivate Backend
 
     App -> App : costruisciSchedaMezzo(\n  vehicle, type, status)
 
     App --> Utente : mostraSchedaMezzo(\n  tipo, modello,\n  livelloBatteria,\n  distanzaDaUtente,\n  tariffaPerMinuto,\n  disponibilita)
+    deactivate App
 end
 
 @enduml

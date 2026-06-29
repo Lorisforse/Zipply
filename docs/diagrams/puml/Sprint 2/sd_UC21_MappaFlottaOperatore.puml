@@ -11,28 +11,41 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Operatore -> Dash : apriMappaFlotta(filtri?)
+activate Dash
 
 Dash -> Backend : GET /api/operator/fleet\n{ Authorization: Bearer, tipo?, zona? }
+activate Backend
 
 Backend -> Backend : verificaRuolo("operatore")
 
-alt ~[ruolo_insufficiente~]
+alt ruolo_insufficiente
     Backend --> Dash : 403 Forbidden
+    deactivate Backend
     Dash --> Operatore : accessoNegato()
-else ~[autorizzato~]
+    deactivate Dash
+else autorizzato
     Backend -> DB : findAllVehicles(filtri)
+    activate DB
     DB --> Backend : mezzi[] (stato, batteria,\n  posizione, tipo)
+    deactivate DB
     Backend --> Dash : 200 OK\n{ vehicles[] }
+    deactivate Backend
     Dash -> Dash : renderizzaMappaFlotta(vehicles[])
     Dash --> Operatore : mostraMappa(\n  tutti i mezzi, filtrabili\n  per tipo e zona)
 
     loop ogni 5 secondi (polling)
         Dash -> Backend : GET /api/operator/fleet
+        activate Backend
         Backend -> DB : findAllVehicles(filtri)
+        activate DB
         DB --> Backend : mezzi[]
+        deactivate DB
         Backend --> Dash : 200 OK { vehicles[] }
+        deactivate Backend
         Dash -> Dash : aggiornaMappa(vehicles[])
     end
+
+    deactivate Dash
 end
 
 @enduml

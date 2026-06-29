@@ -12,19 +12,27 @@ participant ":OpenRouteService" as ORS
 database ":PostgreSQL" as DB
 
 Utente -> App : confermaDestinazione(\n  mezzoSelezionato, destinazione)
+activate App
 
 App -> Backend : POST /routes\n{ vehicleID, destLat, destLng }
+activate Backend
 
 Backend -> DB : findVehicleConTipo(vehicleID)
+activate DB
 DB --> Backend : mezzo + tariffaAlMinuto
+deactivate DB
 
 Backend -> ORS : GET /directions\n{ profilo, start, end }
+activate ORS
 ORS --> Backend : { durataMin }
+deactivate ORS
 
 Backend -> Backend : stimaCosto =\n  durataMin * tariffaAlMinuto
 
 Backend --> App : 200 OK\n{ durataMin, stimaCosto }
+deactivate Backend
 
 App --> Utente : mostraStimaCosto(\n  prima della conferma prenotazione)
+deactivate App
 
 @enduml

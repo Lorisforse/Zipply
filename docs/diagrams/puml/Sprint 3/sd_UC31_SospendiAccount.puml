@@ -1,0 +1,51 @@
+@startuml sd_UC31_SospendiAccount
+
+title sd UC-31: Sospendi o Blocca Account Utente
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Operatore" as Operatore
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Operatore -> Dash : cercaUtente(criterio)
+activate Dash
+
+Dash -> Backend : GET /operator/users?q=...\n{ Authorization: Bearer }
+activate Backend
+Backend -> Backend : verificaRuolo("operatore")
+Backend -> DB : findUsers(criterio)
+activate DB
+DB --> Backend : utenti[] (stato, storico)
+deactivate DB
+Backend --> Dash : 200 OK\n{ users[] }
+deactivate Backend
+Dash --> Operatore : mostraUtenti()
+deactivate Dash
+
+Operatore -> Dash : cambiaStatoAccount(\n  userID, "sospeso" / "bloccato",\n  motivazione, scadenza?)
+activate Dash
+
+Dash -> Backend : PATCH /operator/users/{id}/status\n{ status, reason, suspendedUntil? }
+activate Backend
+Backend -> Backend : verificaRuolo("operatore")
+
+alt corsa_in_corso
+    Backend --> Dash : 409 Conflict\n{ error: "utente con corsa attiva" }
+    Dash --> Operatore : mostraErrore(\n  "Impossibile: corsa in corso")
+else nessuna_corsa_attiva
+    Backend -> DB : updateUserStatus(\n  id, status, reason, suspendedUntil)
+    activate DB
+    DB --> Backend : ok
+    deactivate DB
+    Backend --> Dash : 200 OK\n{ status }
+    Dash --> Operatore : confermaCambioStato()
+end
+deactivate Backend
+deactivate Dash
+
+note over Backend, DB : al login (UC-01) e alla prenotazione\nil backend rifiuta gli account sospesi o bloccati
+
+@enduml

@@ -12,24 +12,36 @@ participant ":Payment Gateway (Mock)" as Pay
 database ":PostgreSQL" as DB
 
 Utente -> App : prenotaInAnticipo(\n  mezzo, data, ora)
+activate App
 
 App -> Backend : POST /bookings/scheduled\n{ vehicleID, scheduledStart }
+activate Backend
 
 Backend -> DB : findVehicleConTipo(vehicleID)
+activate DB
 DB --> Backend : mezzo(tipo)
+deactivate DB
 
-alt ~[monopattino_o_oltre_24h~]
+alt monopattino_o_oltre_24h
     Backend --> App : 400 Bad Request\n{ error: "prenotazione anticipata non consentita" }
+    deactivate Backend
     App --> Utente : mostraErrore(\n  "Solo bici/auto, max 24h prima")
-else ~[bici_o_auto_entro_24h~]
+else bici_o_auto_entro_24h
     Backend -> Backend : tariffaProgressiva(oreAnticipo)\n+ importoForfettario
     Backend -> Pay : preautorizza(importoForfettario)
+    activate Pay
     Pay --> Backend : ok
+    deactivate Pay
     Backend -> DB : insertBooking(\n  type="scheduled", scheduledStart, ...)
+    activate DB
     DB --> Backend : bookingID
+    deactivate DB
     Backend --> App : 201 Created\n{ bookingID, scheduledStart }
+    deactivate Backend
     App --> Utente : confermaPrenotazioneAnticipata(\n  bookingID, data/ora)
 end
+
+deactivate App
 
 note over Backend, DB : in caso di mancata presentazione il mezzo torna\ndisponibile e si addebita proporzionalmente alle ore tenute
 

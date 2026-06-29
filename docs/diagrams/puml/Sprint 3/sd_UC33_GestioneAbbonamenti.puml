@@ -1,0 +1,66 @@
+@startuml sd_UC33_GestioneAbbonamenti
+
+title sd UC-33: Gestione Abbonamenti
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Operatore" as Operatore
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Operatore -> Dash : apriGestioneAbbonamenti()
+activate Dash
+
+Dash -> Backend : GET /operator/subscription-plans\n{ Authorization: Bearer }
+activate Backend
+Backend -> Backend : verificaRuolo("operatore")
+Backend -> DB : findSubscriptionPlans()
+activate DB
+DB --> Backend : piani[] (tipologia, prezzo, durata, attivo)
+deactivate DB
+Backend --> Dash : 200 OK\n{ plans[] }
+deactivate Backend
+Dash --> Operatore : mostraPiani()
+deactivate Dash
+
+Operatore -> Dash : creaPiano(\n  vehicleType, nome, prezzo, durataGiorni)
+activate Dash
+
+Dash -> Backend : POST /operator/subscription-plans\n{ vehicleTypeId, name, price, durationDays }
+activate Backend
+Backend -> Backend : verificaRuolo("operatore")
+
+alt dati_non_validi
+    Backend --> Dash : 400 Bad Request\n{ error }
+    Dash --> Operatore : mostraErrore()
+else dati_validi
+    Backend -> DB : insertSubscriptionPlan(\n  vehicleTypeId, name, price,\n  durationDays, isActive true)
+    activate DB
+    DB --> Backend : planID
+    deactivate DB
+    Backend --> Dash : 201 Created\n{ planID }
+    Dash --> Operatore : confermaPiano(\n  "Piano disponibile agli utenti")
+end
+deactivate Backend
+deactivate Dash
+
+opt disattiva_piano
+    Operatore -> Dash : disattivaPiano(planID)
+    activate Dash
+    Dash -> Backend : PUT /operator/subscription-plans/{id}\n{ isActive: false }
+    activate Backend
+    Backend -> DB : updateSubscriptionPlan(\n  id, isActive false)
+    activate DB
+    DB --> Backend : ok
+    deactivate DB
+    Backend --> Dash : 200 OK
+    deactivate Backend
+    Dash --> Operatore : pianoDisattivato()
+    deactivate Dash
+end
+
+note over Backend, DB : i piani attivi sono quelli che l'utente\nvede e sottoscrive in UC-18 (Sprint 2)
+
+@enduml

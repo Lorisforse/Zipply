@@ -1,0 +1,52 @@
+@startuml sd_UC27_AreeParcheggio
+
+title sd UC-27: Gestione Aree di Parcheggio Designate
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Operatore" as Operatore
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Operatore -> Dash : apriAreeParcheggio()
+activate Dash
+
+Dash -> Backend : GET /operator/parking-zones\n{ Authorization: Bearer }
+activate Backend
+Backend -> Backend : verificaRuolo("operatore")
+Backend -> DB : findParkingZones()
+activate DB
+DB --> Backend : aree[] (polygon, bonusCredit, attiva)
+deactivate DB
+Backend --> Dash : 200 OK\n{ parkingZones[] }
+deactivate Backend
+Dash --> Operatore : mostraAreeSuMappa(\n  aree designate)
+deactivate Dash
+
+Operatore -> Dash : definisciArea(\n  poligono, bonusCredit)
+activate Dash
+
+Dash -> Backend : POST /operator/parking-zones\n{ name, polygon, bonusCredit }
+activate Backend
+
+Backend -> Backend : verificaRuolo("operatore")
+
+alt poligono_non_valido
+    Backend --> Dash : 400 Bad Request\n{ error }
+    Dash --> Operatore : mostraErrore(\n  "Area non valida")
+else poligono_valido
+    Backend -> DB : insertParkingZone(\n  name, polygon, bonusCredit,\n  isActive true)
+    activate DB
+    DB --> Backend : zoneID
+    deactivate DB
+    Backend --> Dash : 201 Created\n{ zoneID }
+    Dash --> Operatore : confermaArea(\n  "Area designata salvata")
+end
+deactivate Backend
+deactivate Dash
+
+note over Backend, DB : le aree designate sono usate a fine corsa\nper il bonus parcheggio corretto (UC-30)
+
+@enduml

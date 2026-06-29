@@ -11,28 +11,37 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : avviaChat()
+activate App
 
 App -> Backend : POST /chat/sessions
+activate Backend
 Backend -> DB : insertChatSession(\n  userID, status="bot")
+activate DB
 DB --> Backend : sessionID
+deactivate DB
 Backend --> App : 201 Created\n{ sessionID }
+deactivate Backend
 
 loop scambio messaggi
     Utente -> App : inviaMessaggio(testo)
     App -> Backend : POST /chat/sessions/{id}/messages\n{ testo }
+    activate Backend
     Backend -> DB : insertMessage(\n  sessionID, sender="utente", testo)
     Backend -> Backend : il chatbot elabora la risposta
 
-    alt ~[caso_comune_gestito_dal_bot~]
+    alt caso_comune_gestito_dal_bot
         Backend -> DB : insertMessage(\n  sessionID, sender="bot", risposta)
         Backend --> App : 200 OK { rispostaBot }
         App --> Utente : mostraRisposta(bot)
-    else ~[caso_complesso_escalation~]
+    else caso_complesso_escalation
         Backend -> DB : updateChatSession(\n  sessionID, status="operatore")
         Backend --> App : 200 OK\n{ "trasferito a un operatore" }
         App --> Utente : mostraAttesaOperatore()
         note over Backend, DB : la presa in carico lato operatore\nè gestita in OP.08 (Sprint 3)
     end
+    deactivate Backend
 end
+
+deactivate App
 
 @enduml

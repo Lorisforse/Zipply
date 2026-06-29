@@ -16,6 +16,7 @@ rectangle "Ziply — Sprint 1" {
     usecase "UC-02 Visualizza mappa" as UC02
     usecase "UC-03 Visualizza scheda mezzo" as UC03
     usecase "UC-04 Prenota mezzo" as UC04
+    usecase "Sblocca mezzo\ne avvia corsa" as UCSB
     usecase "UC-05 Sblocco via prossimità" as UC05
     usecase "UC-06 Sblocco via QR code" as UC06
     usecase "UC-07 Fine corsa e riepilogo" as UC07
@@ -28,9 +29,14 @@ U --> UC01
 U --> UC02
 U --> UC03
 U --> UC04
-U --> UC05
-U --> UC06
+U --> UCSB
 U --> UC07
 U --> UC08
 U --> UC09
+
+' UC-05 e UC-06 sono due metodi alternativi dello stesso obiettivo
+' (sbloccare il mezzo e avviare la corsa): specializzano il caso d'uso
+' generale, da cui ereditano l'associazione con l'Utente.
+UC05 --|> UCSB
+UC06 --|> UCSB
 @enduml

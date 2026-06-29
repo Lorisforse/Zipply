@@ -11,32 +11,43 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : terminaCorsa(vehicleID)
+activate App
 
 App -> App : verificaTokenValido()
 
-alt ~[token_non_valido~]
+alt token_non_valido
     App --> Utente : reindirizzaLogin()
-else ~[token_valido~]
+    deactivate App
+else token_valido
 
     App -> Backend : POST /rides/{rideID}/end
+    activate Backend
 
     Backend -> DB : findRideAttiva(userID, vehicleID)
+    activate DB
     DB --> Backend : risultato
+    deactivate DB
 
-    alt ~[nessuna_corsa_attiva~]
+    alt nessuna_corsa_attiva
         Backend --> App : 403 Forbidden\n{ error: "nessuna corsa attiva" }
+        deactivate Backend
         App --> Utente : mostraErrore("Nessuna corsa attiva")
-    else ~[corsa_attiva~]
+    else corsa_attiva
 
         ' Il backend si limita a chiudere la corsa e liberare il mezzo:
         ' non calcola costo/CO2 e non effettua alcun addebito.
         Backend -> DB : updateRideStato(\n  rideID, "completata",\n  endedAt)
+        activate DB
         DB --> Backend : ok
+        deactivate DB
 
         Backend -> DB : updateVehicleStato(\n  vehicleID, "disponibile")
+        activate DB
         DB --> Backend : ok
+        deactivate DB
 
         Backend --> App : 200 OK\n{ stato: "completata" }
+        deactivate Backend
 
         ' Durata, costo e CO2 sono calcolati lato App (la corsa non e
         ' tracciata via GPS): durata e costo congelati dal timer attivo,
@@ -45,6 +56,8 @@ else ~[token_valido~]
 
         App --> Utente : mostraRiepilogoCorsa(\n  durata, costo, co2,\n  metodoPagamento)
     end
+
+    deactivate App
 
 end
 

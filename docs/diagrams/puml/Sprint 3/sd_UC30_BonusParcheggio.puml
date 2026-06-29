@@ -1,0 +1,51 @@
+@startuml sd_UC30_BonusParcheggio
+
+title sd UC-30: Assegna Bonus Parcheggio Corretto
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Utente" as Utente
+participant ":App Flutter" as App
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Utente -> App : terminaCorsa()
+activate App
+
+App -> Backend : POST /rides/{id}/end
+activate Backend
+
+Backend -> DB : findRideAttiva(id, userID)\ne posizione finale mezzo
+activate DB
+DB --> Backend : corsa, posizioneMezzo
+deactivate DB
+
+Backend -> DB : findParkingZonesAttive()
+activate DB
+DB --> Backend : areeDesignate[] (polygon, bonusCredit)
+deactivate DB
+
+Backend -> Backend : verificaPosizioneInArea(\n  posizioneMezzo, areeDesignate)
+
+alt mezzo_in_area_designata
+    Backend -> DB : updateRide(parkingBonus = bonusArea)\nupdateUser(creditBalance += bonusArea)
+    activate DB
+    DB --> Backend : ok
+    deactivate DB
+    Backend --> App : 200 OK\n{ status: "completata", parkingBonus }
+    App --> Utente : mostraRiepilogo(\n  "Bonus parcheggio accreditato")
+else mezzo_fuori_area
+    Backend -> DB : updateRide(parkingBonus = 0)
+    activate DB
+    DB --> Backend : ok
+    deactivate DB
+    Backend --> App : 200 OK\n{ status: "completata", parkingBonus: 0 }
+    App --> Utente : mostraRiepilogo(\n  senza bonus)
+end
+deactivate Backend
+deactivate App
+
+note over Backend, DB : le aree designate e l'importo del bonus\nsono configurati dall'operatore in UC-27
+
+@enduml

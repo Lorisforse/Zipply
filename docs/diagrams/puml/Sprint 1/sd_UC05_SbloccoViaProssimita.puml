@@ -11,50 +11,69 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : richiediSblocco(vehicleID, metodo="prossimita")
+activate App
 
 App -> App : verificaTokenValido()
 
-alt ~[token_non_valido~]
+alt token_non_valido
     App --> Utente : reindirizzaLogin()
-else ~[token_valido~]
+    deactivate App
+else token_valido
 
     App -> App : recuperaPosizioneGPS()
 
     App -> Backend : POST /vehicles/{vehicleID}/unlock\n{ metodo: "prossimita", lat, lng }
+    activate Backend
 
     Backend -> DB : findVehiclePosition(vehicleID)
+    activate DB
     DB --> Backend : posizioneVeicolo
+    deactivate DB
 
     Backend -> Backend : calcolaDistanza(\n  posizioneUtente,\n  posizioneVeicolo)
 
-    alt ~[distanza_superiore_a_50m~]
+    alt distanza_superiore_a_50m
         Backend --> App : 422 Unprocessable\n{ error: "utente troppo lontano" }
+        deactivate Backend
         App --> Utente : mostraErrore("Avvicinati al mezzo\nper sbloccarlo")
-    else ~[distanza_entro_50m~]
+    else distanza_entro_50m
 
         ' Lo sblocco non richiede una prenotazione: avvia la corsa e,
         ' se non esiste una prenotazione attiva, ne crea una implicita.
         Backend -> DB : findBookingAttiva(\n  userID, vehicleID)
+        activate DB
         DB --> Backend : risultato
+        deactivate DB
 
-        alt ~[prenotazione_attiva_esistente~]
+        alt prenotazione_attiva_esistente
             Backend -> DB : updateBookingStato(\n  bookingID, "utilizzata")
+            activate DB
             DB --> Backend : ok
-        else ~[nessuna_prenotazione~]
+            deactivate DB
+        else nessuna_prenotazione
             Backend -> DB : creaBookingImplicita(\n  userID, vehicleID, "utilizzata")
+            activate DB
             DB --> Backend : bookingID
+            deactivate DB
         end
 
         Backend -> DB : creaRide(\n  bookingID, userID, vehicleID,\n  "attiva", oraInizio)
+        activate DB
         DB --> Backend : rideID
+        deactivate DB
 
         Backend -> DB : updateVehicleStato(\n  vehicleID, "in_uso")
+        activate DB
         DB --> Backend : ok
+        deactivate DB
 
         Backend --> App : 201 Created\n{ rideID, oraInizio }
+        deactivate Backend
 
         App --> Utente : mostraConfermaAvvio(\n  oraInizio)
     end
+
+    deactivate App
 
 end
 

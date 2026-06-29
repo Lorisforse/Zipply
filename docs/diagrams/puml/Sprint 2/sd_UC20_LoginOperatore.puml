@@ -11,24 +11,32 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Operatore -> Dash : inserisciCredenziali(email, password)
+activate Dash
 
 Dash -> Backend : POST /auth/login\n{ email, password }
+activate Backend
 
 Backend -> DB : findUserByEmail(email)
+activate DB
 DB --> Backend : utente(passwordHash, ruolo)
+deactivate DB
 
-alt ~[credenziali_errate~]
+alt credenziali_errate
     Backend --> Dash : 401 Unauthorized\n{ error }
+    deactivate Backend
     Dash --> Operatore : mostraErrore(\n  "Credenziali non valide")
-else ~[credenziali_valide~]
+else credenziali_valide
     Backend -> Backend : generaJWT(\n  sub, email, ruolo)
     Backend --> Dash : 200 OK\n{ token (claim ruolo) }
+    deactivate Backend
     Dash -> Dash : verificaRuolo(\n  ruolo == "operatore")
-    alt ~[ruolo_non_operatore~]
+    alt ruolo_non_operatore
         Dash --> Operatore : accessoNegato(\n  "Area riservata agli operatori")
-    else ~[ruolo_operatore~]
+    else ruolo_operatore
         Dash --> Operatore : mostraDashboard()
     end
 end
+
+deactivate Dash
 
 @enduml

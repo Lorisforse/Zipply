@@ -11,40 +11,56 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : apriZoneVietate()
+activate App
 
 App -> App : verificaTokenValido()
 
-alt ~[token_non_valido~]
+alt token_non_valido
     App --> Utente : reindirizzaLogin()
-else ~[token_valido~]
+    deactivate App
+else token_valido
 
     App -> App : recuperaPosizioneGPS()
 
     App -> Backend : GET /zones/restricted\n{ lat, lng, radius }
+    activate Backend
 
     Backend -> DB : findZoneVietate(\n  lat, lng, radius)
+    activate DB
     DB --> Backend : zoneVietate[]
+    deactivate DB
 
     Backend -> DB : findZoneDesignate(\n  lat, lng, radius)
+    activate DB
     DB --> Backend : zoneDesignate[]
+    deactivate DB
 
     Backend --> App : 200 OK\n{ zoneVietate[],\n  zoneDesignate[] }
+    deactivate Backend
 
     App -> App : renderizzaOverlayZone(\n  zoneVietate[],\n  zoneDesignate[])
 
     App --> Utente : mostraMappaConZone(\n  overlayRosso: zone_vietate,\n  overlayVerde: zone_designate)
 
-    alt ~[utente_sposta_o_zooma~]
+    loop utente_sposta_o_zooma
         Utente -> App : aggiornaAreaVisibile(\n  nuoviBounds)
         App -> Backend : GET /zones/restricted\n{ lat, lng, radius }
+        activate Backend
         Backend -> DB : findZoneVietate(\n  lat, lng, radius)
+        activate DB
         DB --> Backend : zoneVietate[]
+        deactivate DB
         Backend -> DB : findZoneDesignate(\n  lat, lng, radius)
+        activate DB
         DB --> Backend : zoneDesignate[]
+        deactivate DB
         Backend --> App : 200 OK\n{ zoneVietate[],\n  zoneDesignate[] }
-        App -> App : aggiornаOverlayZone(\n  zoneVietate[],\n  zoneDesignate[])
+        deactivate Backend
+        App -> App : aggiornaOverlayZone(\n  zoneVietate[],\n  zoneDesignate[])
         App --> Utente : mostraMappaAggiornata()
     end
+
+    deactivate App
 
 end
 

@@ -11,12 +11,14 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : richiediSblocco(vehicleID, metodo="qr")
+activate App
 
 App -> App : verificaTokenValido()
 
-alt ~[token_non_valido~]
+alt token_non_valido
     App --> Utente : reindirizzaLogin()
-else ~[token_valido~]
+    deactivate App
+else token_valido
 
     App -> App : apriScannerQR()
 
@@ -26,46 +28,63 @@ else ~[token_valido~]
 
     App -> App : decodificaQR(rawData)
 
-    alt ~[qr_non_leggibile~]
+    alt qr_non_leggibile
         App --> Utente : mostraErrore("QR Code non leggibile,\nriprova")
-    else ~[qr_decodificato~]
+    else qr_decodificato
 
         App -> Backend : POST /vehicles/unlock\n{ metodo: "qr", qrCode }
+        activate Backend
 
         ' Lo sblocco non richiede una prenotazione: il backend identifica
         ' il mezzo dal QR, se non esiste una prenotazione ne crea una
         ' implicita, sblocca e avvia la corsa.
         Backend -> DB : findVehicleByQR(qrCode)
+        activate DB
         DB --> Backend : veicolo (vehicleID, stato)
+        deactivate DB
 
-        alt ~[mezzo_non_disponibile~]
+        alt mezzo_non_disponibile
             Backend --> App : 409 Conflict\n{ error: "mezzo non disponibile" }
+            deactivate Backend
             App --> Utente : mostraErrore("Mezzo non disponibile\n(in uso o in manutenzione)")
-        else ~[mezzo_disponibile~]
+        else mezzo_disponibile
 
             Backend -> DB : findBookingAttiva(\n  userID, vehicleID)
+            activate DB
             DB --> Backend : risultato
+            deactivate DB
 
-            alt ~[prenotazione_attiva_esistente~]
+            alt prenotazione_attiva_esistente
                 Backend -> DB : updateBookingStato(\n  bookingID, "utilizzata")
+                activate DB
                 DB --> Backend : ok
-            else ~[nessuna_prenotazione~]
+                deactivate DB
+            else nessuna_prenotazione
                 Backend -> DB : creaBookingImplicita(\n  userID, vehicleID, "utilizzata")
+                activate DB
                 DB --> Backend : bookingID
+                deactivate DB
             end
 
             Backend -> DB : creaRide(\n  bookingID, userID, vehicleID,\n  "attiva", oraInizio)
+            activate DB
             DB --> Backend : rideID
+            deactivate DB
 
             Backend -> DB : updateVehicleStato(\n  vehicleID, "in_uso")
+            activate DB
             DB --> Backend : ok
+            deactivate DB
 
             Backend --> App : 201 Created\n{ rideID, oraInizio }
+            deactivate Backend
 
             App --> Utente : mostraConfermaAvvio(\n  oraInizio)
         end
 
     end
+
+    deactivate App
 
 end
 

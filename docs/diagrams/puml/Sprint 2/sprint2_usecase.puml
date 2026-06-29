@@ -44,4 +44,8 @@ U --> UC23
 U --> UC24
 O --> UC20
 O --> UC21
+
+' Il suggerimento del mezzo richiede SEMPRE il calcolo del percorso:
+' relazione di inclusione (il base UC-12 incorpora il comportamento di UC-10).
+UC12 ..> UC10 : <<include>>
 @enduml

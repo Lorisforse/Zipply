@@ -1,0 +1,33 @@
+@startuml sd_UC41_AndamentoServizio
+
+title sd UC-41: Report Andamento Servizio
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Amministrazione" as Admin
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Admin -> Dash : apriAndamentoServizio(\n  granularità, periodo)
+activate Dash
+
+Dash -> Backend : GET /admin/reports/service-trend\n{ Authorization: Bearer, granularita, from, to }
+activate Backend
+
+Backend -> Backend : verificaRuolo("amministrazione")
+Backend -> DB : aggregaSerieTemporale(\n  corse, utenti attivi, periodo)
+activate DB
+DB --> Backend : serie per intervallo\n(corse, nuovi utenti, durata media)
+deactivate DB
+
+Backend -> Backend : compone l'andamento\nnel tempo del servizio
+
+Backend --> Dash : 200 OK\n{ serie temporale,\n  variazioni periodo su periodo }
+deactivate Backend
+
+Dash --> Admin : mostraReport(\n  trend del servizio)
+deactivate Dash
+
+@enduml

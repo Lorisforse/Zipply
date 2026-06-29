@@ -1,0 +1,46 @@
+@startuml sd_UC32_BloccoRemotoMezzo
+
+title sd UC-32: Blocca da Remoto un Mezzo
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Operatore" as Operatore
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+participant ":IoT Vehicle (Mock)" as IoT
+database ":PostgreSQL" as DB
+
+Operatore -> Dash : bloccaMezzo(vehicleID, motivazione)
+activate Dash
+
+Dash -> Backend : POST /operator/vehicles/{id}/block\n{ reason }
+activate Backend
+
+Backend -> Backend : verificaRuolo("operatore")
+Backend -> DB : findVehicleByID(id)
+activate DB
+DB --> Backend : mezzo(stato)
+deactivate DB
+
+alt mezzo_in_uso
+    Backend --> Dash : 409 Conflict\n{ error: "mezzo attualmente in uso" }
+    Dash --> Operatore : mostraErrore(\n  "Mezzo in uso, blocco non consentito")
+else mezzo_non_in_uso
+    Backend -> IoT : forzaBlocco(\n  vehicleID, tipoMezzo)
+    activate IoT
+    IoT --> Backend : ok (mezzo messo in sicurezza)
+    deactivate IoT
+    Backend -> DB : updateVehicleStatus(\n  vehicleID, "bloccato")
+    activate DB
+    DB --> Backend : ok
+    deactivate DB
+    Backend --> Dash : 200 OK\n{ status: "bloccato" }
+    Dash --> Operatore : confermaBlocco()
+end
+deactivate Backend
+deactivate Dash
+
+note over Backend, DB : un mezzo "bloccato" non compare tra i mezzi\ndisponibili (UC-02) e non è prenotabile;\nlo sblocco avviene con l'operazione inversa /unblock
+
+@enduml

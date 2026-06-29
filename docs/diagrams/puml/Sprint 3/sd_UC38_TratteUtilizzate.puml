@@ -1,0 +1,35 @@
+@startuml sd_UC38_TratteUtilizzate
+
+title sd UC-38: Report Tratte più Utilizzate
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Amministrazione" as Admin
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Admin -> Dash : apriTratteUtilizzate(\n  periodo)
+activate Dash
+
+Dash -> Backend : GET /admin/reports/popular-routes\n{ Authorization: Bearer, from, to }
+activate Backend
+
+Backend -> Backend : verificaRuolo("amministrazione")
+Backend -> DB : aggregaCorsePerCella(\n  origine e destinazione, periodo)
+activate DB
+DB --> Backend : conteggi per area geografica
+deactivate DB
+
+Backend -> Backend : ordina le tratte per\nnumero di passaggi
+
+Backend --> Dash : 200 OK\n{ tratte ordinate,\n  dati per heatmap }
+deactivate Backend
+
+Dash --> Admin : mostraMappaCalore(\n  tratte più trafficate)
+deactivate Dash
+
+note over Backend, DB : utile per pianificare la manutenzione\nnelle aree più sollecitate (UC-37)
+
+@enduml

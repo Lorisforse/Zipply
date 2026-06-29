@@ -14,33 +14,49 @@ database ":PostgreSQL" as DB
 == Pausa ==
 
 Utente -> App : mettiInPausa()  (corsa attiva)
+activate App
 
 App -> Backend : POST /rides/{id}/pause
+activate Backend
 
 Backend -> DB : findRideAttiva(id, userID)
+activate DB
 DB --> Backend : corsa
+deactivate DB
 
 Backend -> IoT : mettiInSicurezza(\n  vehicleID, tipoMezzo)
+activate IoT
 IoT --> Backend : ok (lucchetto / disabilita / blocca portiere)
+deactivate IoT
 
 Backend -> DB : insertRidePause(rideID, pausedAt)\nupdateRideStato(id, "paused")
+activate DB
 DB --> Backend : ok
+deactivate DB
 
 Backend --> App : 200 OK\n{ status: "paused" }
+deactivate Backend
 App --> Utente : mostraStatoPausa(\n  primi 3 min gratis,\n  poi tariffa ridotta)
+deactivate App
 
 == Ripresa ==
 
 Utente -> App : riprendiCorsa()
+activate App
 
 App -> Backend : POST /rides/{id}/resume
+activate Backend
 
 Backend -> Backend : costoPausa = calcola(\n  durata - 3 min gratis,\n  tariffa ridotta 50%)
 Backend -> DB : updateRidePause(resumedAt)\nupdateRideStato(id, "attiva")
+activate DB
 DB --> Backend : ok
+deactivate DB
 
 Backend --> App : 200 OK\n{ status: "attiva", costoPausa }
+deactivate Backend
 App --> Utente : mostraCorsaRipresa()
+deactivate App
 
 note over Backend, DB : se la pausa supera le 24h, un controllo\nperiodico termina automaticamente la corsa
 

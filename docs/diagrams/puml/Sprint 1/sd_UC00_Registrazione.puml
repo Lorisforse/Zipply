@@ -11,30 +11,41 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : inserisciDatiRegistrazione(\n  email, password,\n  confermaPassword, nome)
+activate App
 
 App -> App : validaForm(\n  email, password,\n  confermaPassword)
 
-alt ~[form_non_valido~]
+alt form_non_valido
     App --> Utente : mostraErroriValidazione()
-else ~[form_valido~]
+    deactivate App
+else form_valido
 
     App -> Backend : POST /auth/register\n{ email, password, nome }
+    activate Backend
 
     Backend -> DB : findUserByEmail(email)
+    activate DB
     DB --> Backend : risultato
+    deactivate DB
 
-    alt ~[email_gia_registrata~]
+    alt email_gia_registrata
         Backend --> App : 409 Conflict\n{ error: "email già in uso" }
+        deactivate Backend
         App --> Utente : mostraErrore("Email già registrata")
-    else ~[email_disponibile~]
+    else email_disponibile
         Backend -> Backend : hashPassword(password)
         Backend -> DB : insertUser(\n  email, passwordHash, nome)
+        activate DB
         DB --> Backend : userID
+        deactivate DB
         Backend -> Backend : generaJWT(userID)
         Backend --> App : 201 Created\n{ token, user }
+        deactivate Backend
         App -> App : salvaToken(token)
         App --> Utente : navigaVersoMappa()
     end
+
+    deactivate App
 
 end
 

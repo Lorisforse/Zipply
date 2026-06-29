@@ -13,20 +13,28 @@ participant ":Backend Go" as Backend
 note over App : alla creazione della prenotazione\nl'app conosce expiresAt (createdAt + 15 min)
 
 App -> Notif : pianificaNotificaLocale(\n  expiresAt - 3 min)
+activate Notif
 
 ... 12 minuti dopo (3 min alla scadenza) ...
 
 Notif --> Utente : notifica locale\n"Prenotazione in scadenza tra 3 min"\n[ Vai al mezzo | Annulla ]
+deactivate Notif
 
-alt ~[utente_annulla~]
+alt utente_annulla
     Utente -> App : annullaPrenotazione()
+    activate App
     App -> Backend : POST /bookings/{id}/cancel
+    activate Backend
     Backend --> App : 200 OK
+    deactivate Backend
     App --> Utente : mostraPrenotazioneAnnullata()
-else ~[utente_procede~]
+    deactivate App
+else utente_procede
     Utente -> App : vaiAlMezzo()
+    activate App
     App --> Utente : mostraPercorso / sblocco
-else ~[nessuna_azione~]
+    deactivate App
+else nessuna_azione
     note over App, Backend : alla scadenza (15 min) la prenotazione\ndecade automaticamente e il mezzo torna disponibile
 end
 

@@ -11,23 +11,33 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : selezionaMezzi(mezzi[])\n(max 5, bici/scooter, entro 100 m)
+activate App
 
-App -> App : verificaVincoliLato Client(\n  max 5, raggio 100 m, tipologia)
+App -> App : verificaVincoliLatoClient(\n  max 5, raggio 100 m, tipologia)
 
 App -> Backend : POST /bookings/multi\n{ vehicleIDs[] }
+activate Backend
 
 Backend -> DB : findVehicles(vehicleIDs)
+activate DB
 DB --> Backend : mezzi[]
+deactivate DB
 
-alt ~[vincoli_non_rispettati~]
+alt vincoli_non_rispettati
     Backend --> App : 409 Conflict\n{ error: "vincoli non rispettati" }
+    deactivate Backend
     App --> Utente : mostraErrore(\n  "Selezione non valida")
-else ~[vincoli_ok~]
+else vincoli_ok
     Backend -> DB : insertBookings(\n  userID, vehicleIDs[], scadenza 15 min)\nupdateVehiclesStato("prenotato")
+    activate DB
     DB --> Backend : bookingIDs[]
+    deactivate DB
     Backend --> App : 201 Created\n{ bookings[] }
+    deactivate Backend
     App -> App : avviaCountdownScadenza(15 min)
     App --> Utente : mostraPrenotazioniMultiple(\n  sblocco simultaneo)
 end
+
+deactivate App
 
 @enduml

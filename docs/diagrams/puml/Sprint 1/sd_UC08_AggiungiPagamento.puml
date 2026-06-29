@@ -11,48 +11,59 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : apriGestionePagamenti()
+activate App
 
 App -> App : verificaTokenValido()
 
-alt ~[token_non_valido~]
+alt token_non_valido
     App --> Utente : reindirizzaLogin()
-else ~[token_valido~]
+    deactivate App
+else token_valido
 
     App -> Backend : GET /users/{userID}/payment-methods
+    activate Backend
 
     Backend -> DB : findPaymentMethods(userID)
+    activate DB
     DB --> Backend : metodiEsistenti[]
+    deactivate DB
 
     Backend --> App : 200 OK\n{ paymentMethods[] }
+    deactivate Backend
 
     App --> Utente : mostraMetodiPagamento(\n  metodiEsistenti[])
 
     Utente -> App : aggiungiMetodoPagamento(\n  tipo)
 
-    alt ~[tipo_carta~]
+    alt tipo_carta
         App --> Utente : mostraFormCarta(\n  numero, scadenza, cvv)
         Utente -> App : inserisciDatiCarta(\n  numero, scadenza, cvv)
-    else ~[tipo_paypal~]
+    else tipo_paypal
         App --> Utente : reindirizzaPayPal()
         Utente -> App : confermaAutorizzazionePayPal(\n  token)
-    else ~[tipo_google_pay~]
+    else tipo_google_pay
         App --> Utente : avviaGooglePay()
         Utente -> App : confermaGooglePay(\n  token)
-    else ~[tipo_apple_pay~]
+    else tipo_apple_pay
         App --> Utente : avviaApplePay()
         Utente -> App : confermaApplePay(\n  token)
     end
 
     App -> Backend : POST /users/{userID}/payment-methods\n{ tipo, token }
+    activate Backend
 
     Backend -> Backend : tokenizzaMetodoPagamento(\n  tipo, datiGrezzi)
 
     Backend -> DB : insertPaymentMethod(\n  userID, tipo, token,\n  ultimeCifre)
+    activate DB
     DB --> Backend : paymentMethodID
+    deactivate DB
 
     Backend --> App : 201 Created\n{ paymentMethodID, tipo,\n  ultimeCifre }
+    deactivate Backend
 
     App --> Utente : mostraConferma(\n  "Metodo di pagamento\naggiunto con successo")
+    deactivate App
 
 end
 

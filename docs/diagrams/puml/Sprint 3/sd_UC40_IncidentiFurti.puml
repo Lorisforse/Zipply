@@ -1,0 +1,35 @@
+@startuml sd_UC40_IncidentiFurti
+
+title sd UC-40: Report Incidenti e Furti
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Amministrazione" as Admin
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Admin -> Dash : apriReportIncidenti(\n  tipo?, zona?, periodo)
+activate Dash
+
+Dash -> Backend : GET /admin/reports/incidents\n{ Authorization: Bearer, type?, zona?, from, to }
+activate Backend
+
+Backend -> Backend : verificaRuolo("amministrazione")
+Backend -> DB : findIncidentReports(\n  tipo, zona, periodo)
+activate DB
+DB --> Backend : incidenti[] (tipo, mezzo,\n  posizione, data)
+deactivate DB
+
+Backend -> Backend : aggrega per zona e periodo\n(furti e incidenti)
+
+Backend --> Dash : 200 OK\n{ elenco filtrato,\n  conteggi per zona }
+deactivate Backend
+
+Dash --> Admin : mostraReport(\n  incidenti e furti su mappa)
+deactivate Dash
+
+note over Backend, DB : gli incidenti e i furti sono registrati\ndall'operatore durante il monitoraggio (UC-28)
+
+@enduml

@@ -1,0 +1,51 @@
+@startuml sd_UC35_ConfiguraTariffe
+
+title sd UC-35: Configura Tariffe
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Operatore" as Operatore
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Operatore -> Dash : apriConfigurazioneTariffe()
+activate Dash
+
+Dash -> Backend : GET /operator/vehicle-types\n{ Authorization: Bearer }
+activate Backend
+Backend -> Backend : verificaRuolo("operatore")
+Backend -> DB : findVehicleTypes()
+activate DB
+DB --> Backend : tipologie[] (ratePerMinute)
+deactivate DB
+Backend --> Dash : 200 OK\n{ vehicleTypes[] }
+deactivate Backend
+Dash --> Operatore : mostraTariffeCorrenti()
+deactivate Dash
+
+Operatore -> Dash : modificaTariffa(\n  vehicleTypeID, nuovaTariffa)
+activate Dash
+
+Dash -> Backend : PATCH /operator/vehicle-types/{id}\n{ ratePerMinute }
+activate Backend
+Backend -> Backend : verificaRuolo("operatore")
+
+alt tariffa_non_valida
+    Backend --> Dash : 400 Bad Request\n{ error: "tariffa non valida" }
+    Dash --> Operatore : mostraErrore()
+else tariffa_valida
+    Backend -> DB : updateVehicleType(\n  id, ratePerMinute)
+    activate DB
+    DB --> Backend : ok
+    deactivate DB
+    Backend --> Dash : 200 OK\n{ ratePerMinute }
+    Dash --> Operatore : confermaTariffa(\n  "Tariffa aggiornata")
+end
+deactivate Backend
+deactivate Dash
+
+note over Backend, DB : la nuova tariffa al minuto è usata dalla stima\ncosto (UC-11) e dal calcolo a fine corsa (UC-07)
+
+@enduml

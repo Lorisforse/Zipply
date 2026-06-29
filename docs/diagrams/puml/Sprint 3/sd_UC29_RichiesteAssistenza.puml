@@ -1,0 +1,71 @@
+@startuml sd_UC29_RichiesteAssistenza
+
+title sd UC-29: Gestione Richieste di Assistenza
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Operatore" as Operatore
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Operatore -> Dash : apriRichiesteAssistenza()
+activate Dash
+
+Dash -> Backend : GET /operator/chat/sessions\n{ Authorization: Bearer, status="operatore" }
+activate Backend
+Backend -> Backend : verificaRuolo("operatore")
+Backend -> DB : findChatSessions(\n  status "operatore")
+activate DB
+DB --> Backend : sessioni[] (utente, createdAt)
+deactivate DB
+Backend --> Dash : 200 OK\n{ sessions[] }
+deactivate Backend
+Dash --> Operatore : mostraRichieste(\n  in attesa di presa in carico)
+deactivate Dash
+
+Operatore -> Dash : apriConversazione(sessionID)
+activate Dash
+Dash -> Backend : GET /operator/chat/sessions/{id}/messages
+activate Backend
+Backend -> DB : findMessages(sessionID)
+activate DB
+DB --> Backend : messaggi[]
+deactivate DB
+Backend --> Dash : 200 OK\n{ messages[] }
+deactivate Backend
+Dash --> Operatore : mostraConversazione()
+deactivate Dash
+
+loop scambio messaggi con l'utente
+    Operatore -> Dash : rispondi(testo)
+    activate Dash
+    Dash -> Backend : POST /operator/chat/sessions/{id}/messages\n{ testo }
+    activate Backend
+    Backend -> DB : insertMessage(\n  sessionID, sender="operatore", testo)
+    activate DB
+    DB --> Backend : ok
+    deactivate DB
+    Backend --> Dash : 200 OK
+    deactivate Backend
+    Dash --> Operatore : messaggioInviato()
+    deactivate Dash
+end
+
+Operatore -> Dash : chiudiRichiesta(sessionID)
+activate Dash
+Dash -> Backend : PATCH /operator/chat/sessions/{id}\n{ status="chiusa" }
+activate Backend
+Backend -> DB : updateChatSession(\n  sessionID, "chiusa")
+activate DB
+DB --> Backend : ok
+deactivate DB
+Backend --> Dash : 200 OK
+deactivate Backend
+Dash --> Operatore : richiestaChiusa()
+deactivate Dash
+
+note over Backend, DB : le sessioni in stato "operatore" arrivano\ndall'escalation del chatbot (UC-24, Sprint 2);\nil tempo di risposta medio confluisce in UC-34
+
+@enduml

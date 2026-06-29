@@ -48,9 +48,13 @@ const Color _kDim = AppColors.dim;
 const Color _kAccent = AppColors.accent;
 const Color _kGreen = AppColors.green;
 
-// Centro di Zootropolis: fallback quando la posizione non è disponibile.
-const LatLng _kZootropolisCenter = LatLng(45.4654, 9.1859);
-const double _kRadiusKm = 2.0;
+// Fallback quando il GPS non è disponibile: Dipartimento di Informatica, Bari
+// (così mappa, mezzi e zone restano visibili anche senza posizione reale).
+const LatLng _kZootropolisCenter = LatLng(41.1077, 16.8816);
+// Raggio di ricerca mezzi (km). Volutamente ampio: la prenotazione anticipata
+// (UT.22) deve mostrare la flotta anche a chi sta arrivando a Bari da fuori
+// città, e così i mezzi non "spariscono" spostandosi sulla mappa.
+const double _kRadiusKm = 500.0;
 const double _kZoom = 15;
 
 // Clustering: mezzi entro questo raggio (px schermo, al livello di zoom
@@ -1467,7 +1471,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
           child: GestureDetector(
             onTap: eligible ? () => _toggleGroupSelection(v) : null,
             child: selected
-                ? ActiveVehicleMarker(kind: v.kind, batteryLevel: v.batteryLevel)
+                ? ActiveVehicleMarker(
+                    kind: v.kind, batteryLevel: v.batteryLevel)
                 : VehicleMarker(
                     kind: v.kind,
                     batteryLevel: v.batteryLevel,

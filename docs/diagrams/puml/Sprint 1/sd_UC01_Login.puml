@@ -11,35 +11,45 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : inserisciCredenziali(email, password)
+activate App
 
 App -> App : validaForm(email, password)
 
-alt ~[form_non_valido~]
+alt form_non_valido
     App --> Utente : mostraErroriValidazione()
-else ~[form_valido~]
+    deactivate App
+else form_valido
 
     App -> Backend : POST /auth/login\n{ email, password }
+    activate Backend
 
     Backend -> DB : findUserByEmail(email)
+    activate DB
     DB --> Backend : risultato
+    deactivate DB
 
-    alt ~[utente_non_trovato~]
+    alt utente_non_trovato
         Backend --> App : 401 Unauthorized\n{ error: "credenziali non valide" }
+        deactivate Backend
         App --> Utente : mostraErrore("Credenziali non valide")
-    else ~[utente_trovato~]
+    else utente_trovato
         Backend -> Backend : verificaPassword(\n  password, passwordHash)
 
-        alt ~[password_errata~]
+        alt password_errata
             Backend --> App : 401 Unauthorized\n{ error: "credenziali non valide" }
+            deactivate Backend
             App --> Utente : mostraErrore("Credenziali non valide")
-        else ~[password_corretta~]
+        else password_corretta
             Backend -> Backend : generaJWT(userID)
             Backend --> App : 200 OK\n{ token, user }
+            deactivate Backend
             App -> App : salvaToken(token)
             App --> Utente : navigaVersoMappa()
         end
 
     end
+
+    deactivate App
 
 end
 

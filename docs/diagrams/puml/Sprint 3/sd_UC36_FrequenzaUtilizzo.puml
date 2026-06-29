@@ -1,0 +1,33 @@
+@startuml sd_UC36_FrequenzaUtilizzo
+
+title sd UC-36: Report Frequenza di Utilizzo
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Amministrazione" as Admin
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Admin -> Dash : apriReportFrequenza(\n  tipologia?, periodo)
+activate Dash
+
+Dash -> Backend : GET /admin/reports/usage-frequency\n{ Authorization: Bearer, vehicleType?, from, to }
+activate Backend
+
+Backend -> Backend : verificaRuolo("amministrazione")
+Backend -> DB : aggregaCorsePerTipologia(\n  periodo)
+activate DB
+DB --> Backend : numero corse, durata media,\nfasce orarie per tipologia
+deactivate DB
+
+Backend -> Backend : calcola frequenza\n(corse per giorno e per tipologia)
+
+Backend --> Dash : 200 OK\n{ frequenza per tipologia,\n  serie temporale }
+deactivate Backend
+
+Dash --> Admin : mostraReport(\n  grafici di frequenza)
+deactivate Dash
+
+@enduml

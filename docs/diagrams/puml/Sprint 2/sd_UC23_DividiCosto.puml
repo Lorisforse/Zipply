@@ -15,33 +15,48 @@ database ":PostgreSQL" as DB
 == Generazione del link ==
 
 Utente -> App : generaLinkPagamento(rideID)\n(al termine di una corsa multipla)
+activate App
 
 App -> Backend : POST /rides/{id}/payment-link
+activate Backend
 
 Backend -> DB : findCorsaMultipla(rideID)
+activate DB
 DB --> Backend : costoTotale, numPartecipanti
+deactivate DB
 
 Backend -> Backend : quota = costoTotale / numPartecipanti\nvalidUntil = now + 10 min
 
 Backend -> DB : insertPaymentLink(\n  rideID, totalAmount, participants,\n  amountPerHead, validUntil, "active")
+activate DB
 DB --> Backend : linkID
+deactivate DB
 
 Backend --> App : 201 Created\n{ link, quota, scadenza }
+deactivate Backend
 App --> Utente : mostraLinkCondivisibile
+deactivate App
 
 == Pagamento di una quota ==
 
 Part -> Backend : POST /payment-links/{id}/pay\n{ carta / PayPal }
+activate Backend
 
-alt ~[link_scaduto~]
+alt link_scaduto
     Backend --> Part : 410 Gone\n{ error: "link scaduto" }
     note over Utente : l'utente puo' rigenerare un nuovo link
-else ~[link_valido~]
+else link_valido
     Backend -> Pay : addebita(quota)
+    activate Pay
     Pay --> Backend : ok
+    deactivate Pay
     Backend -> DB : registraPagamento(linkID)\naccreditaCredito(prenotante, quota)
+    activate DB
     DB --> Backend : ok
+    deactivate DB
     Backend --> Part : 200 OK\n{ esito pagamento }
 end
+
+deactivate Backend
 
 @enduml

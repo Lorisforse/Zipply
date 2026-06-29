@@ -11,19 +11,26 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : apriSegnalazione(mezzo)
-
+activate App
 App --> Utente : mostraForm(\n  lista problemi predefiniti,\n  descrizione facoltativa,\n  allegati facoltativi)
+deactivate App
 
 Utente -> App : inviaSegnalazione(\n  tipoProblema, descrizione?, allegati?)
+activate App
 
 App -> Backend : POST /malfunction-reports\n{ vehicleID, problemType,\n  description?, attachments? }
+activate Backend
 
 Backend -> DB : insertMalfunctionReport(\n  userID, vehicleID, problemType,\n  description, status "in_attesa")
+activate DB
 DB --> Backend : reportID
+deactivate DB
 
 Backend --> App : 201 Created\n{ reportID }
+deactivate Backend
 
 App --> Utente : confermaSegnalazione(\n  "Segnalazione inviata")
+deactivate App
 
 note over Backend, DB : la segnalazione sara' visibile\nall'operatore in OP.03 (Sprint 3)
 

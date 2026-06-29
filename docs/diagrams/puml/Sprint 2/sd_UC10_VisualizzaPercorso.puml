@@ -12,29 +12,41 @@ participant ":OpenRouteService" as ORS
 database ":PostgreSQL" as DB
 
 Utente -> App : inserisciDestinazione(\n  mezzoSelezionato, destinazione)
+activate App
 
 App -> Backend : POST /routes\n{ vehicleID, destLat, destLng }
+activate Backend
 
 Backend -> DB : findVehicleByID(vehicleID)
+activate DB
 DB --> Backend : mezzo(posizione, tipo)
+deactivate DB
 
 Backend -> DB : findForbiddenZonesAttive()
+activate DB
 DB --> Backend : zoneVietate[]
+deactivate DB
 
 Backend -> Backend : mappaProfiloMezzo(tipo)\n(cycling-regular / driving-car)
 
 Backend -> ORS : GET /directions\n{ profilo, start, end,\n  avoid_polygons: zoneVietate }
+activate ORS
 
-alt ~[ORS_non_disponibile~]
+alt ORS_non_disponibile
     ORS --> Backend : errore / timeout
+    deactivate ORS
     Backend --> App : 200 OK\n{ percorso: linea diretta (fallback) }
-else ~[percorso_calcolato~]
+else percorso_calcolato
     ORS --> Backend : { geometry, durataMin, distanzaKm }
+    deactivate ORS
     Backend --> App : 200 OK\n{ geometry, durataMin, distanzaKm }
 end
+
+deactivate Backend
 
 App -> App : disegnaPercorso(geometry)
 
 App --> Utente : mostraPercorso(\n  mezzo -> destinazione)
+deactivate App
 
 @enduml

@@ -11,31 +11,43 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : apriMappa()
+activate App
 
 App -> App : recuperaPosizioneGPS()
 
 App -> Backend : GET /vehicles\n{ lat, lng, radius }
+activate Backend
 
 Backend -> DB : findVehiclesNearby(\n  lat, lng, radius)
+activate DB
 DB --> Backend : listaMezzi[]
+deactivate DB
 
 Backend -> Backend : filtraDisponibili(listaMezzi)
 
 Backend --> App : 200 OK\n{ vehicles[] }
+deactivate Backend
 
 App -> App : renderizzaMappa(\n  posizioneUtente,\n  vehicles[])
 
 App --> Utente : mostraMappa(\n  pin mezzi disponibili)
+deactivate App
 
-alt ~[utente_sposta_o_zooma~]
+loop utente_sposta_o_zooma
     Utente -> App : aggiornaAreaVisibile(\n  nuoviBounds)
+    activate App
     App -> Backend : GET /vehicles\n{ lat, lng, radius }
+    activate Backend
     Backend -> DB : findVehiclesNearby(\n  lat, lng, radius)
+    activate DB
     DB --> Backend : listaMezzi[]
+    deactivate DB
     Backend -> Backend : filtraDisponibili(listaMezzi)
     Backend --> App : 200 OK\n{ vehicles[] }
+    deactivate Backend
     App -> App : aggiornaPinMappa(vehicles[])
     App --> Utente : mostraMappaAggiornata()
+    deactivate App
 end
 
 @enduml

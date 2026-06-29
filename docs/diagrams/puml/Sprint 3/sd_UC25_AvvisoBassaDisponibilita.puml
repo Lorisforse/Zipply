@@ -1,0 +1,63 @@
+@startuml sd_UC25_AvvisoBassaDisponibilita
+
+title sd UC-25: Avviso Bassa Disponibilità
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Operatore" as Operatore
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+participant ":Servizio Push (Mock)" as Push
+database ":PostgreSQL" as DB
+
+== Rilevamento periodico (sweeper backend) ==
+
+loop ogni 5 minuti
+    Backend -> DB : findServiceAreasAttive()
+    activate Backend
+    activate DB
+    DB --> Backend : aree[] (polygon, minVehicles)
+    deactivate DB
+
+    Backend -> DB : countMezziDisponibili(perArea)
+    activate DB
+    DB --> Backend : conteggi[]
+    deactivate DB
+
+    Backend -> Backend : confronta conteggio < minVehicles
+
+    opt area_sotto_soglia
+        Backend -> DB : insertAvailabilityAlert(\n  areaID, conteggio, soglia)
+        activate DB
+        DB --> Backend : alertID
+        deactivate DB
+        Backend -> Push : notificaOperatori(\n  "Bassa disponibilità in {area}")
+        activate Push
+        Push --> Backend : ok
+        deactivate Push
+    end
+    deactivate Backend
+end
+
+== Consultazione avvisi ==
+
+Operatore -> Dash : apriAvvisiDisponibilità()
+activate Dash
+
+Dash -> Backend : GET /operator/availability-alerts\n{ Authorization: Bearer }
+activate Backend
+
+Backend -> Backend : verificaRuolo("operatore")
+Backend -> DB : findAvailabilityAlerts()
+activate DB
+DB --> Backend : avvisi[] (area, conteggio, soglia)
+deactivate DB
+
+Backend --> Dash : 200 OK\n{ alerts[] }
+deactivate Backend
+
+Dash --> Operatore : mostraAvvisi(\n  aree a bassa disponibilità)
+deactivate Dash
+
+@enduml

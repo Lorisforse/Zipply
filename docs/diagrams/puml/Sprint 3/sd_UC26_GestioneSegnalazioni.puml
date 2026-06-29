@@ -1,0 +1,58 @@
+@startuml sd_UC26_GestioneSegnalazioni
+
+title sd UC-26: Gestione Segnalazioni Malfunzionamento
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Operatore" as Operatore
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Operatore -> Dash : apriSegnalazioni(filtroStato?)
+activate Dash
+
+Dash -> Backend : GET /operator/malfunction-reports\n{ Authorization: Bearer, stato? }
+activate Backend
+
+Backend -> Backend : verificaRuolo("operatore")
+Backend -> DB : findMalfunctionReports(filtro)
+activate DB
+DB --> Backend : segnalazioni[] (mezzo, tipoProblema,\n  descrizione, stato)
+deactivate DB
+
+Backend --> Dash : 200 OK\n{ reports[] }
+deactivate Backend
+
+Dash --> Operatore : mostraSegnalazioni(\n  elenco con stato)
+deactivate Dash
+
+Operatore -> Dash : aggiornaStato(reportID, nuovoStato)
+activate Dash
+
+Dash -> Backend : PATCH /operator/malfunction-reports/{id}\n{ status }
+activate Backend
+
+Backend -> Backend : verificaRuolo("operatore")
+Backend -> DB : updateMalfunctionStatus(\n  id, status)
+activate DB
+DB --> Backend : ok
+deactivate DB
+
+alt mezzo_da_mettere_in_manutenzione
+    Backend -> DB : updateVehicleStatus(\n  vehicleID, "manutenzione")
+    activate DB
+    DB --> Backend : ok
+    deactivate DB
+end
+
+Backend --> Dash : 200 OK\n{ status }
+deactivate Backend
+
+Dash --> Operatore : confermaAggiornamento(\n  "preso in carico" / "risolto")
+deactivate Dash
+
+note over Backend, DB : le segnalazioni provengono da UC-17\n(segnalazione utente, Sprint 2)
+
+@enduml

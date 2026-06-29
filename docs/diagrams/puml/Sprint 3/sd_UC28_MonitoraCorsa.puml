@@ -1,0 +1,63 @@
+@startuml sd_UC28_MonitoraCorsa
+
+title sd UC-28: Monitora Corsa in Tempo Reale
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Operatore" as Operatore
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+participant ":IoT Vehicle (Mock)" as IoT
+database ":PostgreSQL" as DB
+
+Operatore -> Dash : apriMonitoraggioCorse()
+activate Dash
+
+Dash -> Backend : GET /operator/active-rides\n{ Authorization: Bearer }
+activate Backend
+Backend -> Backend : verificaRuolo("operatore")
+Backend -> DB : findRideAttive()
+activate DB
+DB --> Backend : corse[] (utente, mezzo, posizione)
+deactivate DB
+Backend --> Dash : 200 OK\n{ activeRides[] }
+deactivate Backend
+Dash --> Operatore : mostraCorseSuMappa(\n  posizione mezzi in uso)
+deactivate Dash
+
+loop ogni 5 secondi (polling)
+    Dash -> Backend : GET /operator/active-rides
+    activate Backend
+    Backend -> IoT : leggiTelemetria(vehicleIDs)
+    activate IoT
+    IoT --> Backend : posizioni aggiornate
+    deactivate IoT
+    Backend -> DB : updateVehiclePosition(...)
+    activate DB
+    DB --> Backend : ok
+    deactivate DB
+    Backend --> Dash : 200 OK\n{ activeRides[] }
+    deactivate Backend
+    Dash -> Dash : aggiornaMappa(activeRides)
+end
+
+opt anomalia_rilevata (furto / incidente)
+    Operatore -> Dash : segnalaAnomalia(\n  rideID, tipo, descrizione)
+    activate Dash
+    Dash -> Backend : POST /operator/incidents\n{ rideID, type, description, lat, lng }
+    activate Backend
+    Backend -> Backend : verificaRuolo("operatore")
+    Backend -> DB : insertIncidentReport(\n  vehicleID, rideID, type)
+    activate DB
+    DB --> Backend : incidentID
+    deactivate DB
+    Backend --> Dash : 201 Created\n{ incidentID }
+    deactivate Backend
+    Dash --> Operatore : confermaAnomalia()
+    deactivate Dash
+end
+
+note over Backend, DB : le anomalie registrate alimentano\nil report incidenti e furti (UC-40)
+
+@enduml

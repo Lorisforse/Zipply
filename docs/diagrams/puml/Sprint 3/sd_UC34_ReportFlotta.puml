@@ -1,0 +1,45 @@
+@startuml sd_UC34_ReportFlotta
+
+title sd UC-34: Report Operativi Flotta
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Operatore" as Operatore
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Operatore -> Dash : apriReportFlotta(\n  periodo)
+activate Dash
+
+Dash -> Backend : GET /operator/reports/fleet\n{ Authorization: Bearer, from, to }
+activate Backend
+
+Backend -> Backend : verificaRuolo("operatore")
+Backend -> DB : aggregaUtilizzoMezzi(\n  periodo)
+activate DB
+DB --> Backend : utilizzo per tipologia,\ntasso di occupazione, corse
+deactivate DB
+
+Backend -> DB : aggregaManutenzioni(\n  segnalazioni, mezzi bloccati)
+activate DB
+DB --> Backend : conteggi stato mezzi
+deactivate DB
+
+Backend -> DB : aggregaTempiAssistenza(\n  chat operatore)
+activate DB
+DB --> Backend : tempo di risposta medio
+deactivate DB
+
+Backend -> Backend : compone il report operativo
+
+Backend --> Dash : 200 OK\n{ report: utilizzo, occupazione,\n  manutenzioni, assistenza }
+deactivate Backend
+
+Dash --> Operatore : mostraReport(\n  tabelle e grafici)
+deactivate Dash
+
+note over Backend, DB : il report aggrega dati di corse, segnalazioni\n(UC-26), blocchi (UC-32) e assistenza (UC-29)
+
+@enduml

@@ -1,0 +1,294 @@
+@startuml sprint3_class_diagram
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam nodesep 80
+skinparam ranksep 100
+
+class User {
+    +id: UUID
+    +email: String
+    +passwordHash: String
+    +firstName: String
+    +lastName: String
+    +role: String
+    +createdAt: DateTime
+    +isActive: Boolean
+    +creditBalance: Decimal
+    +status: UserStatus
+    +suspendedUntil: DateTime
+    +suspendReason: String
+}
+
+enum UserStatus {
+    ATTIVO
+    SOSPESO
+    BLOCCATO
+}
+
+class PaymentMethod {
+    +id: UUID
+    +userId: UUID
+    +cardLastFour: String
+    +cardExpiry: String
+    +isDefault: Boolean
+    +createdAt: DateTime
+}
+
+class VehicleType {
+    +id: UUID
+    +name: String
+    +ratePerMinute: Decimal
+    +co2SavedPerKm: Decimal
+}
+
+class Vehicle {
+    +id: UUID
+    +typeId: UUID
+    +qrCode: String
+    +batteryLevel: Integer
+    +latitude: Decimal
+    +longitude: Decimal
+    +status: VehicleStatus
+    +updatedAt: DateTime
+}
+
+enum VehicleStatus {
+    AVAILABLE
+    BOOKED
+    IN_USE
+    MAINTENANCE
+    BLOCKED
+}
+
+class Booking {
+    +id: UUID
+    +userId: UUID
+    +vehicleId: UUID
+    +createdAt: DateTime
+    +expiresAt: DateTime
+    +type: BookingType
+    +scheduledStart: DateTime
+    +status: BookingStatus
+}
+
+enum BookingType {
+    IMMEDIATE
+    SCHEDULED
+}
+
+enum BookingStatus {
+    ACTIVE
+    EXPIRED
+    USED
+    CANCELLED
+}
+
+class Ride {
+    +id: UUID
+    +bookingId: UUID
+    +userId: UUID
+    +vehicleId: UUID
+    +startedAt: DateTime
+    +endedAt: DateTime
+    +durationMinutes: Integer
+    +totalCost: Decimal
+    +co2Saved: Decimal
+    +pausedAt: DateTime
+    +appliedDiscount: Decimal
+    +parkingBonus: Decimal
+    +status: RideStatus
+}
+
+enum RideStatus {
+    ACTIVE
+    PAUSED
+    COMPLETED
+}
+
+class RidePause {
+    +id: UUID
+    +rideId: UUID
+    +pausedAt: DateTime
+    +resumedAt: DateTime
+}
+
+class ForbiddenZone {
+    +id: UUID
+    +name: String
+    +polygon: JSON
+    +isActive: Boolean
+    +createdAt: DateTime
+}
+
+class DiscountCode {
+    +id: UUID
+    +code: String
+    +percentage: Decimal
+    +validFrom: DateTime
+    +validUntil: DateTime
+    +isActive: Boolean
+    +maxUses: Integer
+    +usedCount: Integer
+}
+
+class Promotion {
+    +id: UUID
+    +description: String
+    +percentage: Decimal
+    +validFrom: DateTime
+    +validUntil: DateTime
+    +isActive: Boolean
+}
+
+class Subscription {
+    +id: UUID
+    +userId: UUID
+    +planId: UUID
+    +vehicleTypeId: UUID
+    +startDate: DateTime
+    +endDate: DateTime
+    +status: SubscriptionStatus
+}
+
+enum SubscriptionStatus {
+    ACTIVE
+    EXPIRED
+    CANCELLED
+}
+
+class SubscriptionPlan {
+    +id: UUID
+    +vehicleTypeId: UUID
+    +name: String
+    +price: Decimal
+    +durationDays: Integer
+    +isActive: Boolean
+}
+
+class MalfunctionReport {
+    +id: UUID
+    +userId: UUID
+    +vehicleId: UUID
+    +problemType: String
+    +description: String
+    +createdAt: DateTime
+    +status: MalfunctionStatus
+}
+
+enum MalfunctionStatus {
+    IN_ATTESA
+    PRESO_IN_CARICO
+    RISOLTO
+}
+
+class PaymentLink {
+    +id: UUID
+    +rideId: UUID
+    +totalAmount: Decimal
+    +participants: Integer
+    +amountPerHead: Decimal
+    +validUntil: DateTime
+    +status: String
+}
+
+class ChatSession {
+    +id: UUID
+    +userId: UUID
+    +status: ChatSessionStatus
+    +createdAt: DateTime
+}
+
+class ChatMessage {
+    +id: UUID
+    +sessionId: UUID
+    +sender: String
+    +text: String
+    +sentAt: DateTime
+}
+
+enum ChatSessionStatus {
+    BOT
+    OPERATORE
+    CHIUSA
+}
+
+class ServiceArea {
+    +id: UUID
+    +name: String
+    +polygon: JSON
+    +minVehicles: Integer
+    +isActive: Boolean
+}
+
+class ParkingZone {
+    +id: UUID
+    +name: String
+    +polygon: JSON
+    +bonusCredit: Decimal
+    +isActive: Boolean
+}
+
+class MaintenanceZone {
+    +id: UUID
+    +name: String
+    +polygon: JSON
+    +type: MaintenanceZoneType
+    +description: String
+    +validFrom: DateTime
+    +validUntil: DateTime
+    +isActive: Boolean
+}
+
+enum MaintenanceZoneType {
+    BLOCCANTE
+    RALLENTANTE
+}
+
+class IncidentReport {
+    +id: UUID
+    +vehicleId: UUID
+    +rideId: UUID
+    +type: IncidentType
+    +description: String
+    +latitude: Decimal
+    +longitude: Decimal
+    +createdAt: DateTime
+}
+
+enum IncidentType {
+    FURTO
+    INCIDENTE
+}
+
+User "1" --> "0..*" PaymentMethod : ha
+User "1" --> "0..*" Booking : effettua
+User "1" --> "0..*" Ride : esegue
+User "1" --> "0..*" Subscription : sottoscrive
+User "1" --> "0..*" MalfunctionReport : segnala
+User "1" --> "0..*" ChatSession : avvia
+Booking "1" --> "1" Vehicle : riserva
+Booking "1" --> "1" Ride : genera
+Vehicle "1" --> "1" VehicleType : è di tipo
+Vehicle "1" --> "0..*" MalfunctionReport : oggetto di
+Vehicle "1" --> "0..*" IncidentReport : oggetto di
+Ride "1" --> "0..*" RidePause : registra
+Ride "1" --> "0..*" PaymentLink : genera
+Ride "0..*" --> "0..1" DiscountCode : applica
+Ride "0..*" --> "0..1" Promotion : applica
+Ride "0..*" --> "0..1" IncidentReport : rilevato in
+Ride "0..*" --> "0..1" ParkingZone : termina in
+ChatSession "1" --> "0..*" ChatMessage : contiene
+VehicleType "1" --> "0..*" SubscriptionPlan : offre
+SubscriptionPlan "1" --> "0..*" Subscription : istanziato in
+User ..> UserStatus
+Vehicle ..> VehicleStatus
+Booking ..> BookingType
+Booking ..> BookingStatus
+Ride ..> RideStatus
+Subscription ..> SubscriptionStatus
+MalfunctionReport ..> MalfunctionStatus
+ChatSession ..> ChatSessionStatus
+MaintenanceZone ..> MaintenanceZoneType
+IncidentReport ..> IncidentType
+
+@enduml

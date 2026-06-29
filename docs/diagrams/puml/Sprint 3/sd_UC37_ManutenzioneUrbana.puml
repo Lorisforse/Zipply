@@ -1,0 +1,52 @@
+@startuml sd_UC37_ManutenzioneUrbana
+
+title sd UC-37: Segnala Manutenzione Urbana
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Amministrazione" as Admin
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Admin -> Dash : apriZoneManutenzione()
+activate Dash
+
+Dash -> Backend : GET /admin/maintenance-zones\n{ Authorization: Bearer }
+activate Backend
+Backend -> Backend : verificaRuolo("amministrazione")
+Backend -> DB : findMaintenanceZones()
+activate DB
+DB --> Backend : zone[] (polygon, tipo, validità)
+deactivate DB
+Backend --> Dash : 200 OK\n{ maintenanceZones[] }
+deactivate Backend
+Dash --> Admin : mostraZoneSuMappa()
+deactivate Dash
+
+Admin -> Dash : segnalaManutenzione(\n  poligono, tipo, periodo, descrizione)
+activate Dash
+
+Dash -> Backend : POST /admin/maintenance-zones\n{ name, polygon, type, validFrom,\n  validUntil, description }
+activate Backend
+
+Backend -> Backend : verificaRuolo("amministrazione")
+
+alt dati_non_validi
+    Backend --> Dash : 400 Bad Request\n{ error }
+    Dash --> Admin : mostraErrore()
+else dati_validi
+    Backend -> DB : insertMaintenanceZone(\n  name, polygon, type,\n  validFrom, validUntil)
+    activate DB
+    DB --> Backend : zoneID
+    deactivate DB
+    Backend --> Dash : 201 Created\n{ zoneID }
+    Dash --> Admin : confermaSegnalazione(\n  "Zona critica pubblicata")
+end
+deactivate Backend
+deactivate Dash
+
+note over Backend, DB : le zone bloccanti vengono evitate dal calcolo\npercorso (UC-10) e mostrate sulla mappa (UC-09);\nquelle rallentanti penalizzano il percorso
+
+@enduml

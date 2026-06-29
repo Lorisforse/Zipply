@@ -11,18 +11,24 @@ participant ":Backend Go" as Backend
 database ":PostgreSQL" as DB
 
 Utente -> App : inserisce la destinazione\n(con un mezzo selezionato)
+activate App
 
 App -> Backend : POST /routes\n{ vehicle_id, dest_lat, dest_lng }
+activate Backend
 
 Backend -> DB : findVehicleConTipo(vehicle_id)
+activate DB
 DB --> Backend : mezzo (posizione, tipo, tariffa)
+deactivate DB
 
 Backend -> Backend : calcola percorso e distanza (UC-10)
 
 Backend -> Backend : suggerimento =\n  distanza >= soglia (~3 km) ? "auto" : "bici_scooter"
 
 Backend --> App : 200 OK\n{ geometry, distance_km, duration_minutes,\n  estimated_cost, suggested_type }
+deactivate Backend
 
 App --> Utente : mostra il consiglio nel pannello\n(conferma se il mezzo scelto coincide,\n altrimenti suggerisce l'alternativa)
+deactivate App
 
 @enduml

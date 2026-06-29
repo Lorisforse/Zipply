@@ -1,0 +1,35 @@
+@startuml sd_UC39_ImpattoAmbientale
+
+title sd UC-39: Analisi Impatto Ambientale
+
+skinparam hyperlinkColor black
+skinparam hyperlinkUnderline false
+
+actor ":Amministrazione" as Admin
+participant ":Dashboard Web" as Dash
+participant ":Backend Go" as Backend
+database ":PostgreSQL" as DB
+
+Admin -> Dash : apriImpattoAmbientale(\n  tipologia?, periodo)
+activate Dash
+
+Dash -> Backend : GET /admin/reports/environmental\n{ Authorization: Bearer, vehicleType?, from, to }
+activate Backend
+
+Backend -> Backend : verificaRuolo("amministrazione")
+Backend -> DB : sommaCo2Evitata(\n  corse completate, periodo)
+activate DB
+DB --> Backend : CO2 evitata per tipologia,\nkm percorsi
+deactivate DB
+
+Backend -> Backend : calcola CO2 evitata totale\ne per tipologia di mezzo
+
+Backend --> Dash : 200 OK\n{ co2 evitata totale,\n  ripartizione per tipologia,\n  serie temporale }
+deactivate Backend
+
+Dash --> Admin : mostraReport(\n  impatto ambientale del servizio)
+deactivate Dash
+
+note over Backend, DB : la CO2 evitata è stimata da co2_saved_per_km\ndella tipologia per i km percorsi in ogni corsa
+
+@enduml

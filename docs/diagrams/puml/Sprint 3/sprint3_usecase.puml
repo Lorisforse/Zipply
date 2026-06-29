@@ -1,0 +1,55 @@
+@startuml sprint3_usecase
+skinparam actorStyle awesome
+skinparam usecaseBorderColor #333333
+skinparam usecaseBackgroundColor #F8F8F8
+skinparam arrowColor #333333
+skinparam nodesep 20
+skinparam ranksep 50
+
+left to right direction
+
+actor Operatore as O
+actor "Amministrazione\ncomunale" as A
+
+rectangle "Ziply — Sprint 3" {
+    usecase "UC-25 Avviso bassa disponibilità" as UC25
+    usecase "UC-26 Gestione segnalazioni malfunzionamento" as UC26
+    usecase "UC-27 Gestione aree di parcheggio designate" as UC27
+    usecase "UC-28 Monitora corsa in tempo reale" as UC28
+    usecase "UC-29 Gestione richieste di assistenza" as UC29
+    usecase "UC-30 Assegna bonus parcheggio corretto" as UC30
+    usecase "UC-31 Sospendi o blocca account utente" as UC31
+    usecase "UC-32 Blocca da remoto un mezzo" as UC32
+    usecase "UC-33 Gestione abbonamenti" as UC33
+    usecase "UC-34 Report operativi flotta" as UC34
+    usecase "UC-35 Configura tariffe" as UC35
+    usecase "UC-36 Report frequenza di utilizzo" as UC36
+    usecase "UC-37 Segnala manutenzione urbana" as UC37
+    usecase "UC-38 Tratte più utilizzate" as UC38
+    usecase "UC-39 Analisi impatto ambientale" as UC39
+    usecase "UC-40 Report incidenti e furti" as UC40
+    usecase "UC-41 Report andamento servizio" as UC41
+}
+
+O --> UC25
+O --> UC26
+O --> UC27
+O --> UC28
+O --> UC29
+O --> UC30
+O --> UC31
+O --> UC32
+O --> UC33
+O --> UC34
+O --> UC35
+A --> UC36
+A --> UC37
+A --> UC38
+A --> UC39
+A --> UC40
+A --> UC41
+
+' Il bonus per il parcheggio corretto richiede sempre la verifica delle
+' aree designate: relazione di inclusione (UC-30 incorpora UC-27).
+UC30 ..> UC27 : <<include>>
+@enduml
