@@ -5,6 +5,7 @@ import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/data/models/operator_vehicle_model.dart';
 import 'package:ziply_app/presentation/web/auth/web_auth_gate.dart';
 import 'package:ziply_app/presentation/web/fleet/fleet_screen.dart';
+import 'package:ziply_app/presentation/web/malfunctions/malfunctions_screen.dart';
 import 'package:ziply_app/services/auth_service.dart';
 import 'package:ziply_app/services/operator_service.dart';
 
@@ -170,8 +171,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: [
                 _buildSidebarItem(icon: Icons.analytics_outlined, label: 'Panoramica KPI', index: 0),
                 _buildSidebarItem(icon: Icons.map_outlined, label: 'Mappa Flotta', index: 1),
-                // Voci mostrate ma non selezionabili: nessuna azione al tocco.
-                _buildSidebarItem(icon: Icons.report_problem_outlined, label: 'Malfunzionamenti', index: 2, enabled: false),
+                _buildSidebarItem(icon: Icons.report_problem_outlined, label: 'Malfunzionamenti', index: 2),
+                // Voce mostrata ma non selezionabile: nessuna azione al tocco.
                 _buildSidebarItem(icon: Icons.chat_bubble_outline_rounded, label: 'Chat Supporto', index: 3, enabled: false),
               ],
             ),
@@ -282,6 +283,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     switch (_selectedTab) {
       case 1:
         return 'Mappa Flotta';
+      case 2:
+        return 'Malfunzionamenti';
       case 0:
       default:
         return 'Panoramica KPI';
@@ -292,6 +295,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     switch (_selectedTab) {
       case 1:
         return const FleetScreen();
+      case 2:
+        return const MalfunctionsScreen();
       case 0:
       default:
         return _buildKPIOverview();

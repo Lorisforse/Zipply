@@ -88,6 +88,24 @@ class ApiClient {
     );
   }
 
+  /// PATCH su [path]; [body] viene serializzato in JSON (null = nessun corpo).
+  Future<ApiResponse> patch(
+    String path, {
+    Object? body,
+    bool authenticated = true,
+    Duration timeout = defaultTimeout,
+  }) {
+    return _send(
+      () async => _client.patch(
+        _uri(path, null),
+        headers: await _headers(authenticated),
+        body: body == null ? null : jsonEncode(body),
+      ),
+      authenticated: authenticated,
+      timeout: timeout,
+    );
+  }
+
   /// DELETE su [path].
   Future<ApiResponse> delete(
     String path, {

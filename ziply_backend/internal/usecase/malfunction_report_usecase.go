@@ -12,6 +12,8 @@ import (
 type MalfunctionReportRepository interface {
 	GetRideDetails(ctx context.Context, rideID string) (*domain.Ride, error)
 	Create(ctx context.Context, report *domain.MalfunctionReport) error
+	ListAll(ctx context.Context, statusFilter string) ([]domain.OperatorMalfunctionReport, error)
+	UpdateStatus(ctx context.Context, reportID, newStatus string) error
 }
 
 // MalfunctionReportUsecase implementa la business logic delle segnalazioni.
@@ -64,6 +66,26 @@ func (uc *MalfunctionReportUsecase) Report(ctx context.Context, userID, rideID, 
 	}
 
 	return report, nil
+}
+
+// ListReports restituisce le segnalazioni per la dashboard operatore (OP.03 /
+// UC-26). statusFilter è facoltativo: se valorizzato deve essere uno stato
+// valido, altrimenti vengono restituite tutte le segnalazioni.
+func (uc *MalfunctionReportUsecase) ListReports(ctx context.Context, statusFilter string) ([]domain.OperatorMalfunctionReport, error) {
+	if statusFilter != "" && !domain.IsValidMalfunctionStatus(statusFilter) {
+		return nil, domain.ErrInvalidMalfunctionStatus
+	}
+	return uc.repo.ListAll(ctx, statusFilter)
+}
+
+// UpdateStatus aggiorna lo stato di lavorazione di una segnalazione (OP.03 /
+// UC-26). L'operatore può portarla a 'preso_in_carico' o 'risolto'; riportarla
+// a 'in_attesa' non è una transizione ammessa.
+func (uc *MalfunctionReportUsecase) UpdateStatus(ctx context.Context, reportID, newStatus string) error {
+	if newStatus != domain.MalfunctionStatusPresoInCarico && newStatus != domain.MalfunctionStatusRisolto {
+		return domain.ErrInvalidMalfunctionStatus
+	}
+	return uc.repo.UpdateStatus(ctx, reportID, newStatus)
 }
 
 func isValidProblemType(pt string) bool {

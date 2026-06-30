@@ -30,6 +30,36 @@ func (m *mockMalfunctionReportRepository) Create(ctx context.Context, report *do
 	return nil
 }
 
+func (m *mockMalfunctionReportRepository) ListAll(ctx context.Context, statusFilter string) ([]domain.OperatorMalfunctionReport, error) {
+	out := make([]domain.OperatorMalfunctionReport, 0)
+	for _, rep := range m.reports {
+		if statusFilter != "" && rep.Status != statusFilter {
+			continue
+		}
+		out = append(out, domain.OperatorMalfunctionReport{
+			ID:          rep.ID,
+			VehicleID:   rep.VehicleID,
+			ProblemType: rep.ProblemType,
+			Description: rep.Description,
+			Source:      "utente",
+			Status:      rep.Status,
+		})
+	}
+	return out, nil
+}
+
+func (m *mockMalfunctionReportRepository) UpdateStatus(ctx context.Context, reportID, newStatus string) error {
+	rep, ok := m.reports[reportID]
+	if !ok {
+		return domain.ErrMalfunctionReportNotFound
+	}
+	rep.Status = newStatus
+	if newStatus == domain.MalfunctionStatusRisolto {
+		m.vehicleState[rep.VehicleID] = "disponibile"
+	}
+	return nil
+}
+
 func TestReportMalfunction_Success(t *testing.T) {
 	rides := map[string]*domain.Ride{
 		"r1": {
@@ -143,5 +173,70 @@ func TestReportMalfunction_InvalidProblemType(t *testing.T) {
 	_, err := uc.Report(context.Background(), "u1", "r1", "motore", "desc", "") // 'motore' is not valid
 	if !errors.Is(err, domain.ErrInvalidProblemType) {
 		t.Errorf("expected ErrInvalidProblemType, got %v", err)
+	}
+}
+
+// --- OP.03 / UC-26: gestione segnalazioni lato operatore ---
+
+func newOperatorRepoWithReport(status string) *mockMalfunctionReportRepository {
+	return &mockMalfunctionReportRepository{
+		rides: make(map[string]*domain.Ride),
+		reports: map[string]*domain.MalfunctionReport{
+			"rep1": {ID: "rep1", VehicleID: "v1", ProblemType: "freni", Status: status},
+		},
+		vehicleState: map[string]string{"v1": "manutenzione"},
+	}
+}
+
+func TestListReports_InvalidStatusFilter(t *testing.T) {
+	uc := usecase.NewMalfunctionReportUsecase(newOperatorRepoWithReport("in_attesa"))
+	_, err := uc.ListReports(context.Background(), "inesistente")
+	if !errors.Is(err, domain.ErrInvalidMalfunctionStatus) {
+		t.Errorf("expected ErrInvalidMalfunctionStatus, got %v", err)
+	}
+}
+
+func TestListReports_FilterByStatus(t *testing.T) {
+	uc := usecase.NewMalfunctionReportUsecase(newOperatorRepoWithReport("in_attesa"))
+	got, err := uc.ListReports(context.Background(), "in_attesa")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != "rep1" {
+		t.Errorf("expected 1 report rep1, got %+v", got)
+	}
+	none, _ := uc.ListReports(context.Background(), "risolto")
+	if len(none) != 0 {
+		t.Errorf("expected no report for status risolto, got %+v", none)
+	}
+}
+
+func TestUpdateStatus_RejectsInAttesa(t *testing.T) {
+	uc := usecase.NewMalfunctionReportUsecase(newOperatorRepoWithReport("in_attesa"))
+	err := uc.UpdateStatus(context.Background(), "rep1", "in_attesa")
+	if !errors.Is(err, domain.ErrInvalidMalfunctionStatus) {
+		t.Errorf("expected ErrInvalidMalfunctionStatus, got %v", err)
+	}
+}
+
+func TestUpdateStatus_ResolvedFreesVehicle(t *testing.T) {
+	repo := newOperatorRepoWithReport("preso_in_carico")
+	uc := usecase.NewMalfunctionReportUsecase(repo)
+	if err := uc.UpdateStatus(context.Background(), "rep1", "risolto"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if repo.reports["rep1"].Status != "risolto" {
+		t.Errorf("expected report status risolto, got %q", repo.reports["rep1"].Status)
+	}
+	if repo.vehicleState["v1"] != "disponibile" {
+		t.Errorf("expected vehicle disponibile after resolution, got %q", repo.vehicleState["v1"])
+	}
+}
+
+func TestUpdateStatus_NotFound(t *testing.T) {
+	uc := usecase.NewMalfunctionReportUsecase(newOperatorRepoWithReport("in_attesa"))
+	err := uc.UpdateStatus(context.Background(), "inesistente", "risolto")
+	if !errors.Is(err, domain.ErrMalfunctionReportNotFound) {
+		t.Errorf("expected ErrMalfunctionReportNotFound, got %v", err)
 	}
 }

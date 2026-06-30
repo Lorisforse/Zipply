@@ -119,6 +119,15 @@ func main() {
 		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(operatorHandler.ListVehicles)),
 	))
 
+	// OP.03 — Gestione segnalazioni malfunzionamento (UC-26). Lista e
+	// aggiornamento stato; riservati a operatore/amministrazione.
+	mux.Handle("GET /operator/malfunction-reports", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(malfunctionHandler.ListForOperator)),
+	))
+	mux.Handle("PATCH /operator/malfunction-reports/{id}", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(malfunctionHandler.UpdateStatus)),
+	))
+
 	// UT.10 — Chat di assistenza ibrida bot/operatore
 	chatRepo := repository.NewChatRepository(pool)
 	chatUsecase := usecase.NewChatUsecase(chatRepo)
