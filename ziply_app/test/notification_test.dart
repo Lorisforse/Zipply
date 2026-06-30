@@ -3,7 +3,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:timezone/data/latest.dart' as tz;
-import 'package:timezone/timezone.dart' as tz;
 import 'package:ziply_app/data/models/booking_model.dart';
 import 'package:ziply_app/services/notification_service.dart';
 
@@ -17,9 +16,10 @@ void main() {
 
   setUp(() {
     log.clear();
-    
+
     // Inizializza l'istanza platform per evitare il LateInitializationError nei test unitari su desktop
-    FlutterLocalNotificationsPlatform.instance = AndroidFlutterLocalNotificationsPlugin();
+    FlutterLocalNotificationsPlatform.instance =
+        AndroidFlutterLocalNotificationsPlugin();
 
     // Intercetta le chiamate al canale nativo di flutter_local_notifications
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -66,14 +66,15 @@ void main() {
 
       final Map<dynamic, dynamic> args =
           zonedScheduleCalls.first.arguments as Map<dynamic, dynamic>;
-      
+
       expect(args['id'], 100);
       expect(args['title'], 'Prenotazione in scadenza');
       expect(args['body'], 'La tua prenotazione sta scadendo.');
       expect(args['payload'], 'b-123');
     });
 
-    test('scheduleBookingExpiryNotification does not schedule if expiresAt is too close',
+    test(
+        'scheduleBookingExpiryNotification does not schedule if expiresAt is too close',
         () async {
       final now = DateTime.now();
       // Scadenza tra solo 2 minuti (tempo inferiore ai 3 minuti di preavviso)
@@ -97,15 +98,15 @@ void main() {
       expect(zonedScheduleCalls.isEmpty, true);
     });
 
-    test('cancelNotification calls channel to cancel with correct ID', () async {
+    test('cancelNotification calls channel to cancel with correct ID',
+        () async {
       tz.initializeTimeZones();
       await NotificationService.instance.init();
       await NotificationService.instance.cancelNotification(100);
 
-      final cancelCalls =
-          log.where((call) => call.method == 'cancel').toList();
+      final cancelCalls = log.where((call) => call.method == 'cancel').toList();
       expect(cancelCalls.length, 1);
-      
+
       final arg = cancelCalls.first.arguments;
       if (arg is Map) {
         expect(arg['id'], 100);
