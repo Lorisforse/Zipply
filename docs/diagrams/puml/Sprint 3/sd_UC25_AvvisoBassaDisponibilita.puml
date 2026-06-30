@@ -8,7 +8,6 @@ skinparam hyperlinkUnderline false
 actor ":Operatore" as Operatore
 participant ":Dashboard Web" as Dash
 participant ":Backend Go" as Backend
-participant ":Servizio Push (Mock)" as Push
 database ":PostgreSQL" as DB
 
 == Rilevamento periodico (sweeper backend) ==
@@ -32,10 +31,11 @@ loop ogni 5 minuti
         activate DB
         DB --> Backend : alertID
         deactivate DB
-        Backend -> Push : notificaOperatori(\n  "Bassa disponibilità in {area}")
-        activate Push
-        Push --> Backend : ok
-        deactivate Push
+        note right of Backend
+          L'avviso resta persistito su availability_alerts
+          e viene mostrato nella dashboard operatore
+          (nessuna notifica push esterna)
+        end note
     end
     deactivate Backend
 end

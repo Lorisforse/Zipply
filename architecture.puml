@@ -15,16 +15,15 @@ component "Ziply Mobile App\n(Flutter iOS/Android)" as MobileApp
 component "Ziply Web Dashboard\n(Flutter Web)" as WebDash
 component "Ziply Backend\n(Go — API REST)" as Backend
 component "PostgreSQL" as DB <<database>>
-component "OpenStreetMap\n(flutter_map)" as OSM <<external>>
+component "Stadia Maps\n(flutter_map)" as OSM <<external>>
+note right of OSM : Richiede API key
 component "OpenRouteService API" as ORS <<external>>
-component "Firebase Cloud Messaging" as FCM <<external>>
 component "Payment Gateway" as PayMock <<mock>>
 component "IoT Vehicle Interface" as IoTMock <<mock>>
 
 ' ─── PROVIDED INTERFACES (lollipop) ───
 interface "IMapTiles" as IMapTiles
 interface "IRouteCalc" as IRouteCalc
-interface "IPushNotify" as IPushNotify
 interface "IPayment" as IPayment
 interface "IVehicleControl" as IVehicleControl
 interface "IRestMobile" as IRestMobile
@@ -44,17 +43,13 @@ IRestWeb -- Backend
 Backend --( IDataStore
 IDataStore -- DB
 
-' Mobile consuma tile da OpenStreetMap
+' Mobile consuma tile da Stadia Maps
 MobileApp --( IMapTiles
 IMapTiles -- OSM
 
 ' Backend consuma routing da OpenRouteService
 Backend --( IRouteCalc
 IRouteCalc -- ORS
-
-' Backend consuma notifiche da FCM
-Backend --( IPushNotify
-IPushNotify -- FCM
 
 ' Backend consuma pagamenti dal mock
 Backend --( IPayment

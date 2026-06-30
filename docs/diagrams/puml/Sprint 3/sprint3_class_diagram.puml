@@ -12,7 +12,6 @@ class User {
     +lastName: String
     +role: String
     +createdAt: DateTime
-    +isActive: Boolean
     +creditBalance: Decimal
     +status: UserStatus
     +suspendedUntil: DateTime
@@ -38,6 +37,7 @@ class VehicleType {
     +id: UUID
     +name: String
     +ratePerMinute: Decimal
+    +unlockFee: Decimal
     +co2SavedPerKm: Decimal
 }
 
