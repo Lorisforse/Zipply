@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/lorisforse/ziply_backend/internal/handler"
 	"github.com/lorisforse/ziply_backend/internal/repository"
@@ -29,8 +30,15 @@ func main() {
 	authUsecase := usecase.NewAuthUsecase(userRepo)
 	authHandler := handler.NewAuthHandler(authUsecase)
 
+	// OP.02 / OP.07 — Rilevamento anomalie e avvisi: batteria scarica,
+	// movimento illecito e scarsita' mezzi, persistiti in availability_alerts.
+	availabilityAlertRepo := repository.NewAvailabilityAlertRepository(pool)
+	availabilityAlertUsecase := usecase.NewAvailabilityAlertUsecase(availabilityAlertRepo)
+	availabilityAlertHandler := handler.NewAvailabilityAlertHandler(availabilityAlertUsecase)
+	availabilityAlertUsecase.StartWorker(ctx, 30*time.Second)
+
 	vehicleRepo := repository.NewVehicleRepository(pool)
-	vehicleUsecase := usecase.NewVehicleUsecase(vehicleRepo)
+	vehicleUsecase := usecase.NewVehicleUsecase(vehicleRepo, availabilityAlertRepo)
 	vehicleHandler := handler.NewVehicleHandler(vehicleUsecase)
 
 	bookingRepo := repository.NewBookingRepository(pool)
@@ -136,6 +144,15 @@ func main() {
 	))
 	mux.Handle("DELETE /operator/parking-zones/{id}", middleware.JWTAuth(
 		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(operatorHandler.DeleteParkingZone)),
+	))
+
+	// OP.02 / OP.07 — Avvisi di anomalia (batteria, movimento, scarsita') e
+	// simulazione telemetria GPS (non esiste hardware IoT reale, UC-25).
+	mux.Handle("GET /operator/availability-alerts", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(availabilityAlertHandler.List)),
+	))
+	mux.Handle("PATCH /operator/vehicles/{id}/report-position", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(vehicleHandler.ReportPosition)),
 	))
 
 	// OP.03 — Gestione segnalazioni malfunzionamento (UC-26). Lista e

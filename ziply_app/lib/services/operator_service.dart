@@ -1,5 +1,6 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import 'package:ziply_app/data/models/availability_alert_model.dart';
 import 'package:ziply_app/data/models/operator_malfunction_report_model.dart';
 import 'package:ziply_app/data/models/operator_vehicle_model.dart';
 import 'package:ziply_app/data/models/parking_zone_model.dart';
@@ -7,7 +8,8 @@ import 'package:ziply_app/services/api_client.dart';
 
 /// Servizio dell'area operatore: chiamate REST verso ziply_backend per il
 /// monitoraggio della flotta (OP.01), gestione segnalazioni (OP.03),
-/// blocco remoto mezzi (OP.11) e zone parcheggio (OP.04).
+/// blocco remoto mezzi (OP.11), zone parcheggio (OP.04) e avvisi di
+/// anomalia (OP.02 / OP.07).
 class OperatorService {
   OperatorService({http.Client? client, FlutterSecureStorage? storage})
       : _api = ApiClient(client: client, storage: storage);
@@ -109,5 +111,19 @@ class OperatorService {
     if (res.statusCode == 204) return;
     if (res.statusCode == 404) throw Exception('Zona non trovata');
     throw Exception(res.errorMessage ?? 'Eliminazione zona non riuscita');
+  }
+
+  /// Recupera gli avvisi di anomalia generati dal worker di rilevamento
+  /// (OP.02 / OP.07 / UC-25): batteria scarica, movimento illecito, scarsita'
+  /// mezzi. Log di sola lettura, piu' recenti prima.
+  Future<List<AvailabilityAlertModel>> getAvailabilityAlerts() async {
+    final res = await _api.get('/operator/availability-alerts');
+    if (res.statusCode == 200) {
+      final list = res.list ?? const <dynamic>[];
+      return list
+          .map((e) => AvailabilityAlertModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    throw Exception('Impossibile caricare gli avvisi');
   }
 }

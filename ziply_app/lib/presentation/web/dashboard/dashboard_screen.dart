@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:ziply_app/core/theme/app_colors.dart';
 import 'package:ziply_app/core/theme/app_text_styles.dart';
 import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/data/models/operator_vehicle_model.dart';
+import 'package:ziply_app/presentation/web/alerts/alerts_screen.dart';
 import 'package:ziply_app/presentation/web/auth/web_auth_gate.dart';
 import 'package:ziply_app/presentation/web/fleet/fleet_screen.dart';
 import 'package:ziply_app/presentation/web/malfunctions/malfunctions_screen.dart';
@@ -10,9 +13,10 @@ import 'package:ziply_app/services/auth_service.dart';
 import 'package:ziply_app/services/operator_service.dart';
 
 /// Shell della dashboard web operatore: sidebar di navigazione + area
-/// contenuto. Sono attive la panoramica KPI e la mappa flotta in tempo reale
-/// (OP.01). Le voci "Malfunzionamenti" e "Chat Supporto" sono mostrate ma non
-/// selezionabili (nessuna azione al tocco).
+/// contenuto. Sono attive la panoramica KPI, la mappa flotta in tempo reale
+/// (OP.01), i malfunzionamenti (OP.03) e gli avvisi di anomalia (OP.02 /
+/// OP.07). La voce "Chat Supporto" e' mostrata ma non selezionabile (nessuna
+/// azione al tocco).
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -29,11 +33,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedTab = 0;
 
   List<OperatorVehicleModel> _vehicles = const [];
+  int _recentAlertCount = 0;
+  Timer? _alertsRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     _loadOperatorInfo();
+    _loadAlertCount();
+    _alertsRefreshTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _loadAlertCount(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _alertsRefreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadOperatorInfo() async {
@@ -58,6 +75,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (mounted) setState(() => _vehicles = vehicles);
     } catch (e) {
       zlog('Errore caricamento KPI flotta: $e', tag: 'WebDashboard');
+    }
+  }
+
+  /// Contatore avvisi anomalia nelle ultime 24h per la card KPI (OP.02 / OP.07).
+  Future<void> _loadAlertCount() async {
+    try {
+      final alerts = await _operatorService.getAvailabilityAlerts();
+      final cutoff = DateTime.now().subtract(const Duration(hours: 24));
+      final recent = alerts.where((a) => a.createdAt.isAfter(cutoff)).length;
+      if (mounted) setState(() => _recentAlertCount = recent);
+    } catch (e) {
+      zlog('Errore caricamento contatore avvisi: $e', tag: 'WebDashboard');
     }
   }
 
@@ -172,8 +201,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _buildSidebarItem(icon: Icons.analytics_outlined, label: 'Panoramica KPI', index: 0),
                 _buildSidebarItem(icon: Icons.map_outlined, label: 'Mappa Flotta', index: 1),
                 _buildSidebarItem(icon: Icons.report_problem_outlined, label: 'Malfunzionamenti', index: 2),
+                _buildSidebarItem(icon: Icons.warning_amber_rounded, label: 'Anomalie', index: 3),
                 // Voce mostrata ma non selezionabile: nessuna azione al tocco.
-                _buildSidebarItem(icon: Icons.chat_bubble_outline_rounded, label: 'Chat Supporto', index: 3, enabled: false),
+                _buildSidebarItem(icon: Icons.chat_bubble_outline_rounded, label: 'Chat Supporto', index: 4, enabled: false),
               ],
             ),
           ),
@@ -285,6 +315,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return 'Mappa Flotta';
       case 2:
         return 'Malfunzionamenti';
+      case 3:
+        return 'Anomalie';
       case 0:
       default:
         return 'Panoramica KPI';
@@ -297,6 +329,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return const FleetScreen();
       case 2:
         return const MalfunctionsScreen();
+      case 3:
+        return const AlertsScreen();
       case 0:
       default:
         return _buildKPIOverview();
@@ -358,6 +392,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ],
+            const SizedBox(width: 24),
+            Expanded(
+              child: _buildKPICard(
+                title: 'Anomalie (24h)',
+                value: '$_recentAlertCount',
+                icon: Icons.warning_amber_rounded,
+                color: AppColors.red,
+              ),
+            ),
           ],
         ),
       ],

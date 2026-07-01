@@ -82,3 +82,33 @@ func (r *VehicleRepository) GetByID(ctx context.Context, id string) (*domain.Veh
 	}
 	return &v, nil
 }
+
+// GetPositionAndStatus restituisce posizione e stato correnti del mezzo,
+// usati dal controllo di movimento illecito (OP.02 / OP.07). Ritorna
+// domain.ErrVehicleNotFound se il mezzo non esiste.
+func (r *VehicleRepository) GetPositionAndStatus(ctx context.Context, id string) (lat, lng float64, status string, err error) {
+	err = r.pool.QueryRow(ctx,
+		`SELECT latitude, longitude, status FROM vehicles WHERE id = $1`, id,
+	).Scan(&lat, &lng, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, 0, "", domain.ErrVehicleNotFound
+	}
+	return lat, lng, status, err
+}
+
+// UpdatePosition sovrascrive la posizione riportata dal mezzo (simula la
+// telemetria GPS, OP.02 / OP.07: non esiste hardware IoT reale, la posizione
+// arriva via PATCH /operator/vehicles/{id}/report-position).
+func (r *VehicleRepository) UpdatePosition(ctx context.Context, id string, lat, lng float64) error {
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE vehicles SET latitude = $2, longitude = $3, updated_at = NOW() WHERE id = $1`,
+		id, lat, lng,
+	)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrVehicleNotFound
+	}
+	return nil
+}

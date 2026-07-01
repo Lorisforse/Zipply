@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -63,6 +65,42 @@ func (h *VehicleHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+type reportPositionRequest struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
+// ReportPosition gestisce PATCH /operator/vehicles/{id}/report-position
+// (OP.02 / OP.07): simula la telemetria GPS di un mezzo (non esiste hardware
+// IoT reale). Se il mezzo non e' in uso e lo spostamento supera la soglia
+// configurata, genera un avviso di movimento illecito.
+func (h *VehicleHandler) ReportPosition(w http.ResponseWriter, r *http.Request) {
+	vehicleID := r.PathValue("id")
+	if vehicleID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "ID mezzo mancante"})
+		return
+	}
+
+	var req reportPositionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "body JSON malformato"})
+		return
+	}
+
+	alertTriggered, err := h.vehicles.ReportPosition(r.Context(), vehicleID, req.Latitude, req.Longitude)
+	if err != nil {
+		if errors.Is(err, domain.ErrVehicleNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "mezzo non trovato"})
+			return
+		}
+		log.Printf("[VEHICLES] report position for %s failed: %v", vehicleID, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Errore interno del server"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]bool{"alert_triggered": alertTriggered})
 }
 
 // parseGeoFilter builds a GeoFilter only when lat, lng and radius are all present and parsable.
