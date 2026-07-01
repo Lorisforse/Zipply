@@ -32,6 +32,10 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
   final OperatorService _operatorService = OperatorService();
   final MapController _mapController = MapController();
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _listScrollController = ScrollController();
+
+  // Altezza stimata di ogni riga nella lista mezzi (padding 11*2 + Stack 38px).
+  static const double _kItemHeight = 60.0;
 
   List<OperatorVehicleModel> _vehicles = [];
   List<ParkingZoneModel> _parkingZones = [];
@@ -60,6 +64,7 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
     _refreshTimer?.cancel();
     _searchController.dispose();
     _mapController.dispose();
+    _listScrollController.dispose();
     super.dispose();
   }
 
@@ -167,9 +172,19 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
     return counts;
   }
 
-  void _centerOnVehicle(OperatorVehicleModel v) {
+  void _centerOnVehicle(OperatorVehicleModel v, {bool scrollList = false}) {
     setState(() => _selectedVehicleId = v.id);
     _mapController.move(LatLng(v.latitude, v.longitude), 16.0);
+    if (scrollList) {
+      final idx = _filteredVehicles.indexWhere((e) => e.id == v.id);
+      if (idx >= 0 && _listScrollController.hasClients) {
+        _listScrollController.animateTo(
+          idx * _kItemHeight,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
+    }
   }
 
   // --- Blocco/sblocco (OP.11) ---
@@ -241,7 +256,7 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
       final statusColor = _getStatusColor(v.status);
 
       final markerWidget = GestureDetector(
-        onTap: () => _centerOnVehicle(v),
+        onTap: () => _centerOnVehicle(v, scrollList: true),
         child: Container(
           width: isSelected ? 58 : 38,
           height: isSelected ? 58 : 38,
@@ -461,6 +476,7 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
                             ),
                           )
                         : ListView.builder(
+                            controller: _listScrollController,
                             itemCount: filteredList.length,
                             padding: const EdgeInsets.symmetric(vertical: 4),
                             itemBuilder: (context, index) {
