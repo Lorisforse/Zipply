@@ -1,6 +1,6 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'package:ziply_app/data/models/malfunction_report_model.dart';
+import 'package:ziply_app/data/models/operator_malfunction_report_model.dart';
 import 'package:ziply_app/data/models/operator_vehicle_model.dart';
 import 'package:ziply_app/services/api_client.dart';
 
@@ -28,13 +28,13 @@ class OperatorService {
 
   /// Recupera le segnalazioni di malfunzionamento per la dashboard (OP.03 /
   /// UC-26). [status] opzionale filtra per stato di lavorazione.
-  Future<List<MalfunctionReportModel>> getMalfunctionReports({String? status}) async {
+  Future<List<OperatorMalfunctionReportModel>> getMalfunctionReports({String? status}) async {
     final query = (status != null && status.isNotEmpty) ? {'status': status} : null;
     final res = await _api.get('/operator/malfunction-reports', query: query);
     if (res.statusCode == 200) {
       final list = res.list ?? const <dynamic>[];
       return list
-          .map((e) => MalfunctionReportModel.fromJson(e as Map<String, dynamic>))
+          .map((e) => OperatorMalfunctionReportModel.fromJson(e as Map<String, dynamic>))
           .toList();
     }
     throw Exception('Impossibile caricare le segnalazioni');

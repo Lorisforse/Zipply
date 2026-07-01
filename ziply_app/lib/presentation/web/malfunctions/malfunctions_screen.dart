@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ziply_app/core/theme/app_colors.dart';
 import 'package:ziply_app/core/theme/app_text_styles.dart';
 import 'package:ziply_app/core/utils/app_logger.dart';
-import 'package:ziply_app/data/models/malfunction_report_model.dart';
+import 'package:ziply_app/data/models/operator_malfunction_report_model.dart';
 import 'package:ziply_app/services/operator_service.dart';
 
 /// OP.03 / UC-26 — Gestione segnalazioni di malfunzionamento. L'operatore
@@ -19,7 +19,7 @@ class MalfunctionsScreen extends StatefulWidget {
 class _MalfunctionsScreenState extends State<MalfunctionsScreen> {
   final OperatorService _operatorService = OperatorService();
 
-  List<MalfunctionReportModel> _reports = const [];
+  List<OperatorMalfunctionReportModel> _reports = const [];
   bool _isLoading = true;
   bool _hasError = false;
   String _filter = 'tutti'; // 'tutti' | 'in_attesa' | 'preso_in_carico' | 'risolto'
@@ -56,7 +56,7 @@ class _MalfunctionsScreenState extends State<MalfunctionsScreen> {
     }
   }
 
-  Future<void> _updateStatus(MalfunctionReportModel r, String newStatus) async {
+  Future<void> _updateStatus(OperatorMalfunctionReportModel r, String newStatus) async {
     setState(() => _updating.add(r.id));
     try {
       await _operatorService.updateMalfunctionStatus(r.id, newStatus);
@@ -198,7 +198,7 @@ class _MalfunctionsScreenState extends State<MalfunctionsScreen> {
     );
   }
 
-  Widget _buildReportCard(MalfunctionReportModel r) {
+  Widget _buildReportCard(OperatorMalfunctionReportModel r) {
     final statusColor = _statusColor(r.status);
     final isUpdating = _updating.contains(r.id);
 
