@@ -71,7 +71,7 @@ func (uc *AvailabilityAlertUsecase) checkLowBattery(ctx context.Context) error {
 		if err := uc.repo.Insert(ctx, domain.AvailabilityAlert{
 			Type:      domain.AlertTypeBatteria,
 			VehicleID: &id,
-			Message:   fmt.Sprintf("Batteria scarica (%d%%)", v.BatteryLevel),
+			Message:   fmt.Sprintf("%s (%s): batteria scarica (%d%%)", v.QrCode, v.VehicleType, v.BatteryLevel),
 		}); err != nil {
 			return err
 		}

@@ -2,6 +2,7 @@ package usecase_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/lorisforse/ziply_backend/internal/domain"
@@ -70,7 +71,9 @@ func (m *mockAvailabilityAlertRepo) CountAvailableInArea(ctx context.Context, ce
 
 func TestRunChecks_LowBattery_TriggersAlert(t *testing.T) {
 	repo := newMockAvailabilityAlertRepo()
-	repo.batteryVehicles = []domain.VehicleBatteryStatus{{VehicleID: "v1", BatteryLevel: 15}}
+	repo.batteryVehicles = []domain.VehicleBatteryStatus{
+		{VehicleID: "v1", BatteryLevel: 15, QrCode: "ZP-BIKE-001", VehicleType: "Bicicletta"},
+	}
 	uc := usecase.NewAvailabilityAlertUsecase(repo)
 
 	if err := uc.RunChecks(context.Background()); err != nil {
@@ -81,6 +84,9 @@ func TestRunChecks_LowBattery_TriggersAlert(t *testing.T) {
 	}
 	if *repo.inserted[0].VehicleID != "v1" {
 		t.Fatalf("expected alert for v1, got %+v", repo.inserted[0])
+	}
+	if !strings.Contains(repo.inserted[0].Message, "ZP-BIKE-001") {
+		t.Fatalf("expected message to include the vehicle QR code, got %q", repo.inserted[0].Message)
 	}
 }
 

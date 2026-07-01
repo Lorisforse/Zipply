@@ -56,9 +56,11 @@ type ServiceArea struct {
 	IsActive    bool
 }
 
-// VehicleBatteryStatus e' la proiezione minima di un mezzo necessaria al
-// controllo batteria scarica.
+// VehicleBatteryStatus e' la proiezione di un mezzo necessaria al controllo
+// batteria scarica, con QR code e tipologia per un messaggio leggibile.
 type VehicleBatteryStatus struct {
 	VehicleID    string
 	BatteryLevel int
+	QrCode       string
+	VehicleType  string
 }

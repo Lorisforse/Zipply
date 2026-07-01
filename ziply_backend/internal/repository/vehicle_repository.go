@@ -83,17 +83,21 @@ func (r *VehicleRepository) GetByID(ctx context.Context, id string) (*domain.Veh
 	return &v, nil
 }
 
-// GetPositionAndStatus restituisce posizione e stato correnti del mezzo,
-// usati dal controllo di movimento illecito (OP.02 / OP.07). Ritorna
-// domain.ErrVehicleNotFound se il mezzo non esiste.
-func (r *VehicleRepository) GetPositionAndStatus(ctx context.Context, id string) (lat, lng float64, status string, err error) {
+// GetPositionAndStatus restituisce posizione, stato, QR code e tipologia
+// correnti del mezzo, usati dal controllo di movimento illecito (OP.02 /
+// OP.07) per un messaggio leggibile. Ritorna domain.ErrVehicleNotFound se il
+// mezzo non esiste.
+func (r *VehicleRepository) GetPositionAndStatus(ctx context.Context, id string) (lat, lng float64, status, qrCode, vehicleType string, err error) {
 	err = r.pool.QueryRow(ctx,
-		`SELECT latitude, longitude, status FROM vehicles WHERE id = $1`, id,
-	).Scan(&lat, &lng, &status)
+		`SELECT v.latitude, v.longitude, v.status, v.qr_code, vt.nome
+		 FROM vehicles v
+		 JOIN vehicle_types vt ON vt.id = v.type_id
+		 WHERE v.id = $1`, id,
+	).Scan(&lat, &lng, &status, &qrCode, &vehicleType)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, 0, "", domain.ErrVehicleNotFound
+		return 0, 0, "", "", "", domain.ErrVehicleNotFound
 	}
-	return lat, lng, status, err
+	return lat, lng, status, qrCode, vehicleType, err
 }
 
 // UpdatePosition sovrascrive la posizione riportata dal mezzo (simula la

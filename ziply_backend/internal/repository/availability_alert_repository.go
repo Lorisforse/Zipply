@@ -91,11 +91,14 @@ func (r *AvailabilityAlertRepository) HasRecentAreaAlert(ctx context.Context, se
 }
 
 // LowBatteryVehicles restituisce i mezzi disponibili o prenotati con batteria
-// sotto la soglia data (OP.02).
+// sotto la soglia data (OP.02), con QR code e tipologia per un messaggio
+// leggibile in dashboard.
 func (r *AvailabilityAlertRepository) LowBatteryVehicles(ctx context.Context, threshold int) ([]domain.VehicleBatteryStatus, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, battery_level FROM vehicles
-		 WHERE status IN ('disponibile', 'prenotato') AND battery_level < $1`,
+		`SELECT v.id, v.battery_level, v.qr_code, vt.nome
+		 FROM vehicles v
+		 JOIN vehicle_types vt ON vt.id = v.type_id
+		 WHERE v.status IN ('disponibile', 'prenotato') AND v.battery_level < $1`,
 		threshold,
 	)
 	if err != nil {
@@ -106,7 +109,7 @@ func (r *AvailabilityAlertRepository) LowBatteryVehicles(ctx context.Context, th
 	out := make([]domain.VehicleBatteryStatus, 0)
 	for rows.Next() {
 		var v domain.VehicleBatteryStatus
-		if err := rows.Scan(&v.VehicleID, &v.BatteryLevel); err != nil {
+		if err := rows.Scan(&v.VehicleID, &v.BatteryLevel, &v.QrCode, &v.VehicleType); err != nil {
 			return nil, err
 		}
 		out = append(out, v)

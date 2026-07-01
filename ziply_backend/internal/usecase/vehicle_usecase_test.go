@@ -2,6 +2,7 @@ package usecase_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/lorisforse/ziply_backend/internal/domain"
@@ -20,11 +21,11 @@ func (m *mockVehicleRepository) ListAvailable(ctx context.Context, filter *domai
 	return m.vehicles, nil
 }
 
-func (m *mockVehicleRepository) GetPositionAndStatus(ctx context.Context, id string) (float64, float64, string, error) {
+func (m *mockVehicleRepository) GetPositionAndStatus(ctx context.Context, id string) (float64, float64, string, string, string, error) {
 	if id == "inesistente" {
-		return 0, 0, "", domain.ErrVehicleNotFound
+		return 0, 0, "", "", "", domain.ErrVehicleNotFound
 	}
-	return m.lat, m.lng, m.status, nil
+	return m.lat, m.lng, m.status, "ZP-TEST-001", "Bicicletta", nil
 }
 
 func (m *mockVehicleRepository) UpdatePosition(ctx context.Context, id string, lat, lng float64) error {
@@ -83,6 +84,9 @@ func TestReportPosition_MovementBeyondThreshold_NotInUso_TriggersAlert(t *testin
 	}
 	if !repo.updated {
 		t.Fatal("expected vehicle position to be updated regardless of the alert")
+	}
+	if !strings.Contains(alerts.inserted[0].Message, "ZP-TEST-001") {
+		t.Fatalf("expected message to include the vehicle QR code, got %q", alerts.inserted[0].Message)
 	}
 }
 

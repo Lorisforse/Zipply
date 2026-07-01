@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/lorisforse/ziply_backend/internal/domain"
 )
@@ -9,7 +10,7 @@ import (
 // VehicleRepository abstracts the persistence of vehicles required by the listing flow.
 type VehicleRepository interface {
 	ListAvailable(ctx context.Context, filter *domain.GeoFilter) ([]domain.Vehicle, error)
-	GetPositionAndStatus(ctx context.Context, id string) (lat, lng float64, status string, err error)
+	GetPositionAndStatus(ctx context.Context, id string) (lat, lng float64, status, qrCode, vehicleType string, err error)
 	UpdatePosition(ctx context.Context, id string, lat, lng float64) error
 }
 
@@ -45,7 +46,7 @@ func (uc *VehicleUsecase) ListAvailable(ctx context.Context, filter *domain.GeoF
 // (deduplicato entro domain.AlertDedupeWindow). Ritorna true se e' stato
 // generato un avviso. La posizione viene comunque aggiornata.
 func (uc *VehicleUsecase) ReportPosition(ctx context.Context, vehicleID string, lat, lng float64) (bool, error) {
-	prevLat, prevLng, status, err := uc.vehicles.GetPositionAndStatus(ctx, vehicleID)
+	prevLat, prevLng, status, qrCode, vehicleType, err := uc.vehicles.GetPositionAndStatus(ctx, vehicleID)
 	if err != nil {
 		return false, err
 	}
@@ -63,7 +64,7 @@ func (uc *VehicleUsecase) ReportPosition(ctx context.Context, vehicleID string, 
 				if err := uc.alerts.Insert(ctx, domain.AvailabilityAlert{
 					Type:      domain.AlertTypeMovimento,
 					VehicleID: &id,
-					Message:   "Movimento rilevato senza corsa attiva",
+					Message:   fmt.Sprintf("%s (%s): movimento rilevato senza corsa attiva (%.0fm)", qrCode, vehicleType, distance),
 				}); err != nil {
 					return false, err
 				}
