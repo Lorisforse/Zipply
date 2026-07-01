@@ -481,7 +481,7 @@ class _ChatConsoleScreenState extends State<ChatConsoleScreen> {
               ),
               child: _sending
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.bg))
-                  : const Icon(Icons.send_rounded, size: 20),
+                  : const Icon(Icons.send_rounded, size: 20, color: AppColors.bg),
             ),
           ),
         ],
