@@ -43,10 +43,13 @@ func (u *ChatUsecase) GetOrCreateSession(ctx context.Context, userID string) (*d
 	return u.repo.CreateSession(ctx, userID)
 }
 
-// SendMessage salva il messaggio dell'utente, genera la risposta del bot
-// ed eventualmente scala la sessione a operatore.
+// SendMessage salva il messaggio dell'utente e, finché la sessione è gestita
+// dal bot, genera la risposta automatica scalando eventualmente a operatore.
+// Una volta che la sessione è passata a operatore, il bot non risponde più: il
+// messaggio viene solo persistito e resta in carico all'operatore umano.
 func (u *ChatUsecase) SendMessage(ctx context.Context, sessionID, userID, body string) ([]domain.ChatMessage, error) {
-	if _, err := u.repo.GetSession(ctx, sessionID, userID); err != nil {
+	session, err := u.repo.GetSession(ctx, sessionID, userID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -57,6 +60,11 @@ func (u *ChatUsecase) SendMessage(ctx context.Context, sessionID, userID, body s
 	}
 	if err := u.repo.AddMessage(ctx, userMsg); err != nil {
 		return nil, err
+	}
+
+	// Sessione già scalata: nessuna risposta del bot, parola all'operatore.
+	if session.Status != domain.ChatStatusBot {
+		return []domain.ChatMessage{*userMsg}, nil
 	}
 
 	replyText, escalate := botReply(body)

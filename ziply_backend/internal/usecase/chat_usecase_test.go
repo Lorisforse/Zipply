@@ -212,6 +212,38 @@ func TestSendMessage_EscalatesWhenBotDoesNotUnderstand(t *testing.T) {
 	}
 }
 
+func TestSendMessage_NoBotReplyAfterEscalation(t *testing.T) {
+	repo := newMockChatRepository()
+	uc := usecase.NewChatUsecase(repo)
+	session, _ := uc.GetOrCreateSession(context.Background(), "user1")
+
+	// Primo messaggio: scala a operatore (bot non capisce).
+	uc.SendMessage(context.Background(), session.ID, "user1", "voglio un operatore")
+
+	// Messaggio successivo: la sessione è già in carico all'operatore, il bot
+	// non deve più rispondere.
+	msgs, err := uc.SendMessage(context.Background(), session.ID, "user1", "salve, non riesco a sbloccare il mezzo")
+	if err != nil {
+		t.Fatalf("errore inatteso: %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].Sender != "utente" {
+		t.Fatalf("atteso solo il messaggio utente senza risposta bot, ottenuto %+v", msgs)
+	}
+
+	// Nello storico non deve esserci una seconda risposta bot: bot risponde
+	// una sola volta (quella di escalation iniziale).
+	all, _ := repo.GetMessages(context.Background(), session.ID)
+	botCount := 0
+	for _, m := range all {
+		if m.Sender == "bot" {
+			botCount++
+		}
+	}
+	if botCount != 1 {
+		t.Fatalf("atteso 1 solo messaggio bot (escalation), ottenuti %d", botCount)
+	}
+}
+
 func TestSendMessage_SessionNotFound(t *testing.T) {
 	repo := newMockChatRepository()
 	uc := usecase.NewChatUsecase(repo)
