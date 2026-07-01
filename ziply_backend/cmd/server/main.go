@@ -172,6 +172,22 @@ func main() {
 	mux.Handle("POST /chat/sessions/{id}/messages", middleware.JWTAuth(http.HandlerFunc(chatHandler.SendMessage)))
 	mux.Handle("GET /chat/sessions/{id}/messages", middleware.JWTAuth(http.HandlerFunc(chatHandler.GetMessages)))
 
+	// OP.08 — Console operatore per l'escalation della chat di assistenza.
+	// Coda condivisa: qualsiasi operatore/amministrazione collegato vede le
+	// stesse sessioni scalate e puo' risponderne una qualsiasi.
+	mux.Handle("GET /operator/chat/sessions", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(chatHandler.ListOperatorSessions)),
+	))
+	mux.Handle("GET /operator/chat/sessions/{id}/messages", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(chatHandler.GetOperatorMessages)),
+	))
+	mux.Handle("POST /operator/chat/sessions/{id}/messages", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(chatHandler.SendOperatorMessage)),
+	))
+	mux.Handle("PATCH /operator/chat/sessions/{id}/close", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(chatHandler.CloseSession)),
+	))
+
 	// UT.22 — Abbonamenti per tipologia di mezzo
 	subscriptionRepo := repository.NewSubscriptionRepository(pool)
 	subscriptionUsecase := usecase.NewSubscriptionUsecase(subscriptionRepo)

@@ -7,6 +7,7 @@ import 'package:ziply_app/core/utils/app_logger.dart';
 import 'package:ziply_app/data/models/operator_vehicle_model.dart';
 import 'package:ziply_app/presentation/web/alerts/alerts_screen.dart';
 import 'package:ziply_app/presentation/web/auth/web_auth_gate.dart';
+import 'package:ziply_app/presentation/web/chat/chat_console_screen.dart';
 import 'package:ziply_app/presentation/web/fleet/fleet_screen.dart';
 import 'package:ziply_app/presentation/web/malfunctions/malfunctions_screen.dart';
 import 'package:ziply_app/services/auth_service.dart';
@@ -14,9 +15,8 @@ import 'package:ziply_app/services/operator_service.dart';
 
 /// Shell della dashboard web operatore: sidebar di navigazione + area
 /// contenuto. Sono attive la panoramica KPI, la mappa flotta in tempo reale
-/// (OP.01), i malfunzionamenti (OP.03) e gli avvisi di anomalia (OP.02 /
-/// OP.07). La voce "Chat Supporto" e' mostrata ma non selezionabile (nessuna
-/// azione al tocco).
+/// (OP.01), i malfunzionamenti (OP.03), gli avvisi di anomalia (OP.02 /
+/// OP.07) e la console di chat di supporto (OP.08).
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -34,6 +34,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<OperatorVehicleModel> _vehicles = const [];
   int _recentAlertCount = 0;
+  int _waitingChatCount = 0;
   Timer? _alertsRefreshTimer;
 
   @override
@@ -41,9 +42,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _loadOperatorInfo();
     _loadAlertCount();
+    _loadWaitingChatCount();
     _alertsRefreshTimer = Timer.periodic(
       const Duration(seconds: 10),
-      (_) => _loadAlertCount(),
+      (_) {
+        _loadAlertCount();
+        _loadWaitingChatCount();
+      },
     );
   }
 
@@ -67,6 +72,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
     _loadFleet();
+  }
+
+  /// Contatore chat in attesa di risposta per il badge sidebar (OP.08).
+  /// Mentre la console e' aperta il conteggio arriva da [ChatConsoleScreen]
+  /// tramite [onWaitingCountChanged], quindi qui basta evitare la doppia fonte.
+  Future<void> _loadWaitingChatCount() async {
+    if (_selectedTab == 4) return;
+    try {
+      final sessions = await _operatorService.getChatSessions();
+      final waiting = sessions.where((s) => s.isWaiting).length;
+      if (mounted) setState(() => _waitingChatCount = waiting);
+    } catch (e) {
+      zlog('Errore caricamento contatore chat: $e', tag: 'WebDashboard');
+    }
   }
 
   Future<void> _loadFleet() async {
@@ -159,7 +178,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 Expanded(
                   child: Padding(
-                    padding: _selectedTab == 1 ? EdgeInsets.zero : const EdgeInsets.all(32),
+                    padding: (_selectedTab == 1 || _selectedTab == 4) ? EdgeInsets.zero : const EdgeInsets.all(32),
                     child: _buildMainContent(),
                   ),
                 ),
@@ -202,8 +221,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _buildSidebarItem(icon: Icons.map_outlined, label: 'Mappa Flotta', index: 1),
                 _buildSidebarItem(icon: Icons.report_problem_outlined, label: 'Malfunzionamenti', index: 2),
                 _buildSidebarItem(icon: Icons.warning_amber_rounded, label: 'Anomalie', index: 3),
-                // Voce mostrata ma non selezionabile: nessuna azione al tocco.
-                _buildSidebarItem(icon: Icons.chat_bubble_outline_rounded, label: 'Chat Supporto', index: 4, enabled: false),
+                _buildSidebarItem(
+                  icon: Icons.chat_bubble_outline_rounded,
+                  label: 'Chat Supporto',
+                  index: 4,
+                  badgeCount: _waitingChatCount,
+                ),
               ],
             ),
           ),
@@ -274,6 +297,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required String label,
     required int index,
     bool enabled = true,
+    int badgeCount = 0,
   }) {
     final isSelected = enabled && _selectedTab == index;
     return Padding(
@@ -292,14 +316,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   Icon(icon, color: isSelected ? AppColors.accent : AppColors.dim, size: 20),
                   const SizedBox(width: 16),
-                  Text(
-                    label,
-                    style: appCond(
-                      size: 15,
-                      w: isSelected ? FontWeight.w600 : FontWeight.w500,
-                      c: isSelected ? AppColors.text : AppColors.dim,
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: appCond(
+                        size: 15,
+                        w: isSelected ? FontWeight.w600 : FontWeight.w500,
+                        c: isSelected ? AppColors.text : AppColors.dim,
+                      ),
                     ),
                   ),
+                  if (badgeCount > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(color: AppColors.red, borderRadius: BorderRadius.circular(10)),
+                      child: Text(
+                        '$badgeCount',
+                        style: appCond(size: 11, w: FontWeight.bold, c: Colors.white),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -317,6 +352,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return 'Malfunzionamenti';
       case 3:
         return 'Anomalie';
+      case 4:
+        return 'Chat Supporto';
       case 0:
       default:
         return 'Panoramica KPI';
@@ -331,6 +368,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return const MalfunctionsScreen();
       case 3:
         return const AlertsScreen();
+      case 4:
+        return ChatConsoleScreen(onWaitingCountChanged: (count) {
+          if (mounted) setState(() => _waitingChatCount = count);
+        });
       case 0:
       default:
         return _buildKPIOverview();

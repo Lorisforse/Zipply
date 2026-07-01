@@ -114,3 +114,62 @@ func (r *ChatRepository) GetSession(ctx context.Context, sessionID, userID strin
 	}
 	return s, nil
 }
+
+// GetSessionByID restituisce una sessione per ID senza filtrare per utente,
+// per l'uso lato console operatore (OP.08) dove la coda e' condivisa.
+func (r *ChatRepository) GetSessionByID(ctx context.Context, sessionID string) (*domain.ChatSession, error) {
+	s := &domain.ChatSession{}
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, user_id, status, created_at FROM chat_sessions WHERE id = $1`,
+		sessionID,
+	).Scan(&s.ID, &s.UserID, &s.Status, &s.CreatedAt)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrChatSessionNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+// ListForOperator restituisce le sessioni non chiuse con i dati dell'utente e
+// l'ultimo messaggio, per la console di supporto operatore (OP.08). Ordinate
+// per data dell'ultimo messaggio, piu' recenti prima.
+func (r *ChatRepository) ListForOperator(ctx context.Context) ([]domain.OperatorChatSession, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT s.id, s.user_id, u.nome || ' ' || u.cognome, u.email, s.status, s.created_at,
+		        lm.text, lm.sent_at, lm.sender
+		 FROM chat_sessions s
+		 JOIN users u ON u.id = s.user_id
+		 JOIN LATERAL (
+		     SELECT text, sent_at, sender FROM chat_messages
+		     WHERE session_id = s.id ORDER BY sent_at DESC LIMIT 1
+		 ) lm ON true
+		 WHERE s.status = 'operatore'
+		 ORDER BY lm.sent_at DESC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	sessions := make([]domain.OperatorChatSession, 0)
+	for rows.Next() {
+		var s domain.OperatorChatSession
+		if err := rows.Scan(
+			&s.ID, &s.UserID, &s.UserName, &s.UserEmail, &s.Status, &s.CreatedAt,
+			&s.LastMessage, &s.LastMessageAt, &s.LastMessageFrom,
+		); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, rows.Err()
+}
+
+// CloseSession imposta la sessione in stato 'chiusa' (OP.08).
+func (r *ChatRepository) CloseSession(ctx context.Context, sessionID string) error {
+	_, err := r.pool.Exec(ctx, `UPDATE chat_sessions SET status = 'chiusa' WHERE id = $1`, sessionID)
+	return err
+}

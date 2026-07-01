@@ -1,6 +1,8 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:ziply_app/data/models/availability_alert_model.dart';
+import 'package:ziply_app/data/models/chat_model.dart';
+import 'package:ziply_app/data/models/operator_chat_model.dart';
 import 'package:ziply_app/data/models/operator_malfunction_report_model.dart';
 import 'package:ziply_app/data/models/operator_vehicle_model.dart';
 import 'package:ziply_app/data/models/parking_zone_model.dart';
@@ -8,8 +10,8 @@ import 'package:ziply_app/services/api_client.dart';
 
 /// Servizio dell'area operatore: chiamate REST verso ziply_backend per il
 /// monitoraggio della flotta (OP.01), gestione segnalazioni (OP.03),
-/// blocco remoto mezzi (OP.11), zone parcheggio (OP.04) e avvisi di
-/// anomalia (OP.02 / OP.07).
+/// blocco remoto mezzi (OP.11), zone parcheggio (OP.04), avvisi di
+/// anomalia (OP.02 / OP.07) e console di chat di supporto (OP.08).
 class OperatorService {
   OperatorService({http.Client? client, FlutterSecureStorage? storage})
       : _api = ApiClient(client: client, storage: storage);
@@ -125,5 +127,45 @@ class OperatorService {
           .toList();
     }
     throw Exception('Impossibile caricare gli avvisi');
+  }
+
+  /// Recupera le chat scalate a operatore per la console di supporto (OP.08).
+  /// Coda condivisa: la lista e' la stessa per tutti gli operatori collegati.
+  Future<List<OperatorChatSessionModel>> getChatSessions() async {
+    final res = await _api.get('/operator/chat/sessions');
+    if (res.statusCode == 200) {
+      final list = res.list ?? const <dynamic>[];
+      return list
+          .map((e) => OperatorChatSessionModel.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    throw Exception('Impossibile caricare le chat di supporto');
+  }
+
+  /// Recupera lo storico messaggi di una sessione (OP.08).
+  Future<({ChatSessionModel session, List<ChatMessageModel> messages})> getChatMessages(String sessionId) async {
+    final res = await _api.get('/operator/chat/sessions/$sessionId/messages');
+    if (res.statusCode == 200) {
+      final json = res.map ?? const <String, dynamic>{};
+      final session = ChatSessionModel.fromJson(json['session'] as Map<String, dynamic>);
+      final rawMsgs = json['messages'] as List<dynamic>? ?? [];
+      final messages = rawMsgs.map((e) => ChatMessageModel.fromJson(e as Map<String, dynamic>)).toList();
+      return (session: session, messages: messages);
+    }
+    throw Exception('Impossibile caricare i messaggi della chat');
+  }
+
+  /// Invia un messaggio come operatore in una sessione scalata (OP.08).
+  Future<void> sendChatMessage(String sessionId, String body) async {
+    final res = await _api.post('/operator/chat/sessions/$sessionId/messages', body: {'body': body});
+    if (res.statusCode == 201) return;
+    throw Exception(res.errorMessage ?? 'Invio messaggio non riuscito');
+  }
+
+  /// Chiude una sessione di chat di supporto (OP.08).
+  Future<void> closeChatSession(String sessionId) async {
+    final res = await _api.patch('/operator/chat/sessions/$sessionId/close');
+    if (res.statusCode == 200) return;
+    throw Exception(res.errorMessage ?? 'Chiusura chat non riuscita');
   }
 }

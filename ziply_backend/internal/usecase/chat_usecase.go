@@ -5,16 +5,29 @@ import (
 	"strings"
 
 	"github.com/lorisforse/ziply_backend/internal/domain"
-	"github.com/lorisforse/ziply_backend/internal/repository"
 )
+
+// ChatRepository definisce i metodi richiesti per la persistenza di sessioni
+// e messaggi di chat, lato utente (UT.10) e lato operatore (OP.08).
+type ChatRepository interface {
+	GetOpenSession(ctx context.Context, userID string) (*domain.ChatSession, error)
+	CreateSession(ctx context.Context, userID string) (*domain.ChatSession, error)
+	SetEscalated(ctx context.Context, sessionID string) error
+	AddMessage(ctx context.Context, msg *domain.ChatMessage) error
+	GetMessages(ctx context.Context, sessionID string) ([]domain.ChatMessage, error)
+	GetSession(ctx context.Context, sessionID, userID string) (*domain.ChatSession, error)
+	GetSessionByID(ctx context.Context, sessionID string) (*domain.ChatSession, error)
+	ListForOperator(ctx context.Context) ([]domain.OperatorChatSession, error)
+	CloseSession(ctx context.Context, sessionID string) error
+}
 
 // ChatUsecase gestisce la logica di sessione, risposta bot ed escalation.
 type ChatUsecase struct {
-	repo *repository.ChatRepository
+	repo ChatRepository
 }
 
 // NewChatUsecase crea un nuovo ChatUsecase.
-func NewChatUsecase(repo *repository.ChatRepository) *ChatUsecase {
+func NewChatUsecase(repo ChatRepository) *ChatUsecase {
 	return &ChatUsecase{repo: repo}
 }
 
@@ -104,4 +117,55 @@ func containsAny(s string, keywords ...string) bool {
 		}
 	}
 	return false
+}
+
+// ListOperatorSessions restituisce le chat scalate a operatore per la console
+// di supporto (OP.08), piu' recenti prima in base all'ultimo messaggio.
+func (u *ChatUsecase) ListOperatorSessions(ctx context.Context) ([]domain.OperatorChatSession, error) {
+	return u.repo.ListForOperator(ctx)
+}
+
+// GetOperatorMessages restituisce lo storico messaggi di una sessione per la
+// console operatore (OP.08), senza vincolo di appartenenza utente.
+func (u *ChatUsecase) GetOperatorMessages(ctx context.Context, sessionID string) ([]domain.ChatMessage, *domain.ChatSession, error) {
+	session, err := u.repo.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	msgs, err := u.repo.GetMessages(ctx, sessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return msgs, session, nil
+}
+
+// SendOperatorMessage salva un messaggio inviato dall'operatore (OP.08). Non
+// e' possibile scrivere in una sessione gia' chiusa.
+func (u *ChatUsecase) SendOperatorMessage(ctx context.Context, sessionID, text string) (*domain.ChatMessage, error) {
+	session, err := u.repo.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if session.Status == domain.ChatStatusChiusa {
+		return nil, domain.ErrChatSessionClosed
+	}
+
+	msg := &domain.ChatMessage{
+		SessionID: sessionID,
+		Sender:    "operatore",
+		Text:      text,
+	}
+	if err := u.repo.AddMessage(ctx, msg); err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
+
+// CloseSession chiude una sessione di chat (OP.08): l'utente, se scrive di
+// nuovo, aprira' una nuova sessione partendo dal bot.
+func (u *ChatUsecase) CloseSession(ctx context.Context, sessionID string) error {
+	if _, err := u.repo.GetSessionByID(ctx, sessionID); err != nil {
+		return err
+	}
+	return u.repo.CloseSession(ctx, sessionID)
 }
