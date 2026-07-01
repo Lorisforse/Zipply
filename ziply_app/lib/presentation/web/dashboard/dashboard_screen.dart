@@ -307,6 +307,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final totale = _vehicles.length;
     final disponibili = _vehicles.where((v) => v.status == 'disponibile').length;
     final manutenzione = _vehicles.where((v) => v.status == 'manutenzione').length;
+    final bloccati = _vehicles.where((v) => v.status == 'bloccato').length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -346,6 +347,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 color: AppColors.red,
               ),
             ),
+            if (bloccati > 0) ...[
+              const SizedBox(width: 24),
+              Expanded(
+                child: _buildKPICard(
+                  title: 'Bloccati',
+                  value: '$bloccati',
+                  icon: Icons.lock_rounded,
+                  color: const Color(0xFF9C27B0),
+                ),
+              ),
+            ],
           ],
         ),
       ],

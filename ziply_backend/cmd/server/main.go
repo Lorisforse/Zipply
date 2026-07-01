@@ -119,6 +119,25 @@ func main() {
 		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(operatorHandler.ListVehicles)),
 	))
 
+	// OP.11 — Blocco/sblocco remoto del mezzo (UC-32).
+	mux.Handle("PATCH /operator/vehicles/{id}/block", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(operatorHandler.BlockVehicle)),
+	))
+	mux.Handle("PATCH /operator/vehicles/{id}/unblock", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(operatorHandler.UnblockVehicle)),
+	))
+
+	// OP.04 — Zone parcheggio designate (UC-27): lista e creazione/rimozione.
+	mux.Handle("GET /operator/parking-zones", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(operatorHandler.ListParkingZones)),
+	))
+	mux.Handle("POST /operator/parking-zones", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(operatorHandler.CreateParkingZone)),
+	))
+	mux.Handle("DELETE /operator/parking-zones/{id}", middleware.JWTAuth(
+		middleware.RequireRole("operatore", "amministrazione")(http.HandlerFunc(operatorHandler.DeleteParkingZone)),
+	))
+
 	// OP.03 — Gestione segnalazioni malfunzionamento (UC-26). Lista e
 	// aggiornamento stato; riservati a operatore/amministrazione.
 	mux.Handle("GET /operator/malfunction-reports", middleware.JWTAuth(

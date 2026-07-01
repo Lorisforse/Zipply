@@ -26,6 +26,26 @@ func (m *mockOperatorRepository) ListAllVehicles(ctx context.Context) ([]domain.
 	return m.vehicles, nil
 }
 
+func (m *mockOperatorRepository) BlockVehicle(ctx context.Context, vehicleID string) error {
+	return nil
+}
+
+func (m *mockOperatorRepository) UnblockVehicle(ctx context.Context, vehicleID string) error {
+	return nil
+}
+
+func (m *mockOperatorRepository) ListParkingZones(ctx context.Context) ([]domain.ParkingZone, error) {
+	return nil, nil
+}
+
+func (m *mockOperatorRepository) CreateParkingZone(ctx context.Context, z *domain.ParkingZone) error {
+	return nil
+}
+
+func (m *mockOperatorRepository) DeleteParkingZone(ctx context.Context, id string) error {
+	return nil
+}
+
 func TestListVehicles_OK(t *testing.T) {
 	repo := &mockOperatorRepository{
 		vehicles: []domain.OperatorVehicle{
