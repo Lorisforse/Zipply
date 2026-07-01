@@ -180,54 +180,27 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
       builder: (ctx) => _VehicleActionDialog(
         vehicle: v,
         onBlock: () async {
-          Navigator.of(ctx).pop();
-          await _blockVehicle(v);
+          await _operatorService.blockVehicle(v.id);
+          await _loadVehicles(silent: true);
         },
         onUnblock: () async {
           Navigator.of(ctx).pop();
-          await _unblockVehicle(v);
+          try {
+            await _operatorService.unblockVehicle(v.id);
+            await _loadVehicles(silent: true);
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Errore sblocco: $e')),
+              );
+            }
+          }
         },
         statusColor: _getStatusColor(v.status),
         statusLabel: _getStatusLabel(v.status),
         typeIcon: _getTypeIcon(v.kind),
       ),
     );
-  }
-
-  Future<void> _blockVehicle(OperatorVehicleModel v) async {
-    try {
-      await _operatorService.blockVehicle(v.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Mezzo ${v.qrCode} bloccato remotamente')),
-        );
-      }
-      await _loadVehicles(silent: true);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Errore blocco: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _unblockVehicle(OperatorVehicleModel v) async {
-    try {
-      await _operatorService.unblockVehicle(v.id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Mezzo ${v.qrCode} sbloccato')),
-        );
-      }
-      await _loadVehicles(silent: true);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Errore sblocco: $e')),
-        );
-      }
-    }
   }
 
   // --- Creazione zona parcheggio (OP.04) ---
@@ -865,7 +838,7 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
 
 class _VehicleActionDialog extends StatefulWidget {
   final OperatorVehicleModel vehicle;
-  final VoidCallback onBlock;
+  final Future<void> Function() onBlock;
   final VoidCallback onUnblock;
   final Color statusColor;
   final String statusLabel;
@@ -887,10 +860,22 @@ class _VehicleActionDialog extends StatefulWidget {
 class _VehicleActionDialogState extends State<_VehicleActionDialog> {
   bool _confirming = false;
   bool _isBlocking = false;
+  bool _blocked = false;
+  String? _blockError;
 
   void _requestBlock() => setState(() => _confirming = true);
 
   void _cancel() => setState(() => _confirming = false);
+
+  Future<void> _doBlock() async {
+    setState(() { _isBlocking = true; _blockError = null; });
+    try {
+      await widget.onBlock();
+      if (mounted) setState(() { _blocked = true; _isBlocking = false; _confirming = false; });
+    } catch (e) {
+      if (mounted) setState(() { _blockError = e.toString(); _isBlocking = false; });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -965,7 +950,35 @@ class _VehicleActionDialogState extends State<_VehicleActionDialog> {
                 ),
               ),
               const SizedBox(height: 20),
-              if (_confirming) ...[
+              if (_blocked) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: AppColors.green.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.green.withValues(alpha: 0.35)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_rounded, color: AppColors.green, size: 20),
+                      const SizedBox(width: 10),
+                      Text('Mezzo bloccato', style: appCond(size: 15, w: FontWeight.w600, c: AppColors.green)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.dim,
+                      side: const BorderSide(color: AppColors.border),
+                    ),
+                    child: const Text('Chiudi'),
+                  ),
+                ),
+              ] else if (_confirming) ...[
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -978,12 +991,16 @@ class _VehicleActionDialogState extends State<_VehicleActionDialog> {
                     style: appBody(size: 13, c: AppColors.text),
                   ),
                 ),
+                if (_blockError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(_blockError!, style: appBody(size: 12, c: AppColors.red)),
+                ],
                 const SizedBox(height: 14),
                 Row(
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: _cancel,
+                        onPressed: _isBlocking ? null : _cancel,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.dim,
                           side: const BorderSide(color: AppColors.border),
@@ -994,10 +1011,7 @@ class _VehicleActionDialogState extends State<_VehicleActionDialog> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: _isBlocking ? null : () {
-                          setState(() => _isBlocking = true);
-                          widget.onBlock();
-                        },
+                        onPressed: _isBlocking ? null : _doBlock,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.red,
                           foregroundColor: Colors.white,
