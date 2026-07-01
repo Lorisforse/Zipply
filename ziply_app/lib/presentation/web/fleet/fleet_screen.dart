@@ -46,6 +46,16 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
   String _searchQuery = '';
   Timer? _refreshTimer;
 
+  // --- Creazione zona (OP.04): modalita' inline sulla mappa ---
+  bool _creatingZone = false;
+  LatLng _previewCenter = const LatLng(41.1257, 16.8694);
+  double _previewRadiusM = 100;
+  bool _savingZone = false;
+  String? _zoneError;
+  final TextEditingController _zoneNameCtrl = TextEditingController();
+  final TextEditingController _zoneRadiusCtrl = TextEditingController(text: '100');
+  final TextEditingController _zoneBonusCtrl = TextEditingController(text: '0');
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +67,10 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.trim().toLowerCase());
     });
+    _zoneRadiusCtrl.addListener(() {
+      final r = double.tryParse(_zoneRadiusCtrl.text);
+      if (r != null && r > 0 && mounted) setState(() => _previewRadiusM = r);
+    });
   }
 
   @override
@@ -65,6 +79,9 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
     _searchController.dispose();
     _mapController.dispose();
     _listScrollController.dispose();
+    _zoneNameCtrl.dispose();
+    _zoneRadiusCtrl.dispose();
+    _zoneBonusCtrl.dispose();
     super.dispose();
   }
 
@@ -218,27 +235,55 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
     );
   }
 
-  // --- Creazione zona parcheggio (OP.04) ---
+  // --- Creazione zona parcheggio inline (OP.04) ---
 
-  Future<void> _showCreateZoneDialog() async {
-    final center = _mapController.camera.center;
-    final created = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => _CreateZoneDialog(
-        centerLat: center.latitude,
-        centerLng: center.longitude,
-        onSave: (name, lat, lng, radiusM, bonus) async {
-          await _operatorService.createParkingZone(
-            name: name,
-            lat: lat,
-            lng: lng,
-            radiusMeters: radiusM,
-            bonusCredit: bonus,
-          );
-        },
-      ),
-    );
-    if (created == true) await _loadParkingZones();
+  void _startCreatingZone() {
+    setState(() {
+      _creatingZone = true;
+      _previewCenter = _mapController.camera.center;
+      _previewRadiusM = double.tryParse(_zoneRadiusCtrl.text) ?? 100;
+      _zoneError = null;
+    });
+  }
+
+  void _cancelCreatingZone() {
+    setState(() {
+      _creatingZone = false;
+      _zoneNameCtrl.clear();
+      _zoneRadiusCtrl.text = '100';
+      _zoneBonusCtrl.text = '0';
+      _zoneError = null;
+    });
+  }
+
+  Future<void> _saveZone() async {
+    final name = _zoneNameCtrl.text.trim();
+    if (name.isEmpty) {
+      setState(() => _zoneError = 'Inserisci un nome per la zona');
+      return;
+    }
+    final radius = double.tryParse(_zoneRadiusCtrl.text);
+    if (radius == null || radius <= 0) {
+      setState(() => _zoneError = 'Raggio non valido');
+      return;
+    }
+    final bonus = double.tryParse(_zoneBonusCtrl.text) ?? 0;
+    setState(() { _savingZone = true; _zoneError = null; });
+    try {
+      await _operatorService.createParkingZone(
+        name: name,
+        lat: _previewCenter.latitude,
+        lng: _previewCenter.longitude,
+        radiusMeters: radius,
+        bonusCredit: bonus,
+      );
+      _cancelCreatingZone();
+      await _loadParkingZones();
+    } catch (e) {
+      if (mounted) setState(() { _zoneError = e.toString(); _savingZone = false; });
+    } finally {
+      if (mounted && _savingZone) setState(() => _savingZone = false);
+    }
   }
 
   @override
@@ -331,19 +376,27 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
       );
     }).toList();
 
-    // Cerchi per le zone parcheggio (OP.04).
-    final List<CircleMarker> zoneCircles = _showZones
-        ? _parkingZones.map((z) {
-            return CircleMarker(
+    // Cerchi per le zone parcheggio (OP.04) + anteprima in modalita' creazione.
+    final List<CircleMarker> zoneCircles = [
+      if (_showZones)
+        ..._parkingZones.map((z) => CircleMarker(
               point: z.center.latLng,
               radius: z.center.radius,
               useRadiusInMeter: true,
               color: AppColors.green.withValues(alpha: 0.12),
               borderColor: AppColors.green.withValues(alpha: 0.55),
               borderStrokeWidth: 2.0,
-            );
-          }).toList()
-        : [];
+            )),
+      if (_creatingZone)
+        CircleMarker(
+          point: _previewCenter,
+          radius: _previewRadiusM,
+          useRadiusInMeter: true,
+          color: AppColors.green.withValues(alpha: 0.18),
+          borderColor: AppColors.green,
+          borderStrokeWidth: 2.5,
+        ),
+    ];
 
     return Stack(
       children: [
@@ -351,11 +404,16 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
         Positioned.fill(
           child: FlutterMap(
             mapController: _mapController,
-            options: const MapOptions(
-              initialCenter: LatLng(41.1257, 16.8694),
+            options: MapOptions(
+              initialCenter: const LatLng(41.1257, 16.8694),
               initialZoom: 14.0,
               maxZoom: 18.0,
               minZoom: 11.0,
+              onPositionChanged: (position, _) {
+                if (_creatingZone && mounted) {
+                  setState(() => _previewCenter = position.center);
+                }
+              },
             ),
             children: [
               ziplyTileLayer(context),
@@ -732,15 +790,20 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
                           ),
                         ),
                         const SizedBox(width: 6),
-                        OutlinedButton(
-                          onPressed: _showCreateZoneDialog,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.green,
-                            side: BorderSide(color: AppColors.green.withValues(alpha: 0.40)),
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                            minimumSize: Size.zero,
+                        GestureDetector(
+                          onTap: _creatingZone ? null : _startCreatingZone,
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: _creatingZone
+                                  ? AppColors.green.withValues(alpha: 0.40)
+                                  : AppColors.green,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Icon(Icons.add_rounded, size: 18, color: Colors.white),
                           ),
-                          child: const Icon(Icons.add_rounded, size: 16),
                         ),
                       ],
                     ),
@@ -750,7 +813,160 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
             ],
           ),
         ),
+
+        // Mirino al centro della mappa in modalita' creazione zona.
+        if (_creatingZone)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Center(
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: 24,
+                      height: 2.5,
+                      color: Colors.white.withValues(alpha: 0.90),
+                    ),
+                    Container(
+                      width: 2.5,
+                      height: 24,
+                      color: Colors.white.withValues(alpha: 0.90),
+                    ),
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+        // Pannello flottante di creazione zona (OP.04), compare solo in modalita' creazione.
+        if (_creatingZone)
+          Positioned(
+            left: 352,
+            right: 222,
+            bottom: 16,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _panelColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.green.withValues(alpha: 0.50)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.50),
+                    blurRadius: 30,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(color: AppColors.green, shape: BoxShape.circle),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Nuova zona parcheggio',
+                        style: appCond(size: 15, w: FontWeight.bold, c: AppColors.green),
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Centra la mappa sul punto desiderato',
+                        style: appBody(size: 12, c: AppColors.dim),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(child: _buildZoneField(_zoneNameCtrl, 'Nome zona')),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: 100,
+                        child: _buildZoneField(_zoneRadiusCtrl, 'Raggio (m)', keyboard: TextInputType.number),
+                      ),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: 100,
+                        child: _buildZoneField(_zoneBonusCtrl, 'Bonus (%)', keyboard: TextInputType.number),
+                      ),
+                      const SizedBox(width: 16),
+                      OutlinedButton(
+                        onPressed: _savingZone ? null : _cancelCreatingZone,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.dim,
+                          side: const BorderSide(color: AppColors.border),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        ),
+                        child: const Text('ANNULLA'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: _savingZone ? null : _saveZone,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.green,
+                          foregroundColor: AppColors.bg,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                        child: _savingZone
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text('CREA ZONA'),
+                      ),
+                    ],
+                  ),
+                  if (_zoneError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_zoneError!, style: appBody(size: 12, c: AppColors.red)),
+                  ],
+                ],
+              ),
+            ),
+          ),
       ],
+    );
+  }
+
+  Widget _buildZoneField(
+    TextEditingController ctrl,
+    String label, {
+    TextInputType? keyboard,
+  }) {
+    return Container(
+      height: 40,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: TextField(
+        controller: ctrl,
+        keyboardType: keyboard,
+        style: appBody(size: 13.5, c: AppColors.text),
+        decoration: InputDecoration(
+          hintText: label,
+          hintStyle: appBody(size: 12, c: AppColors.dim),
+          border: InputBorder.none,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        ),
+      ),
     );
   }
 
@@ -1110,197 +1326,7 @@ class _VehicleActionDialogState extends State<_VehicleActionDialog> {
   }
 }
 
-// --- Dialog creazione zona parcheggio (OP.04) ---
-
-class _CreateZoneDialog extends StatefulWidget {
-  final double centerLat;
-  final double centerLng;
-  final Future<void> Function(String name, double lat, double lng, double radiusM, double bonus) onSave;
-
-  const _CreateZoneDialog({
-    required this.centerLat,
-    required this.centerLng,
-    required this.onSave,
-  });
-
-  @override
-  State<_CreateZoneDialog> createState() => _CreateZoneDialogState();
-}
-
-class _CreateZoneDialogState extends State<_CreateZoneDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _nameCtrl = TextEditingController();
-  final _radiusCtrl = TextEditingController(text: '100');
-  final _bonusCtrl = TextEditingController(text: '0');
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _radiusCtrl.dispose();
-    _bonusCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() { _saving = true; _error = null; });
-    try {
-      await widget.onSave(
-        _nameCtrl.text.trim(),
-        widget.centerLat,
-        widget.centerLng,
-        double.parse(_radiusCtrl.text.trim()),
-        double.tryParse(_bonusCtrl.text.trim()) ?? 0,
-      );
-      if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 340),
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Nuova zona parcheggio', style: appCond(size: 20, w: FontWeight.bold)),
-                const SizedBox(height: 6),
-                Text(
-                  'Centrata sul punto attuale della mappa',
-                  style: appBody(size: 13, c: AppColors.dim),
-                ),
-                const SizedBox(height: 16),
-                // Coordinate read-only: info sul centro catturato.
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.bg,
-                    borderRadius: BorderRadius.circular(7),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.location_on_rounded, color: AppColors.green, size: 16),
-                      const SizedBox(width: 8),
-                      Text(
-                        '${widget.centerLat.toStringAsFixed(5)}, ${widget.centerLng.toStringAsFixed(5)}',
-                        style: appBody(size: 13, c: AppColors.dim),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _buildField(_nameCtrl, 'Nome zona',
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Campo obbligatorio' : null),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildField(_radiusCtrl, 'Raggio (m)',
-                          keyboard: TextInputType.number,
-                          validator: (v) {
-                            final d = double.tryParse(v ?? '');
-                            return (d == null || d <= 0) ? 'Valore non valido' : null;
-                          }),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _buildField(_bonusCtrl, 'Bonus (€)',
-                          keyboard: TextInputType.number,
-                          validator: (v) => double.tryParse(v ?? '') == null ? 'Numero non valido' : null),
-                    ),
-                  ],
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 10),
-                  Text(_error!, style: appBody(size: 12, c: AppColors.red)),
-                ],
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(false),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.dim,
-                          side: const BorderSide(color: AppColors.border),
-                        ),
-                        child: const Text('ANNULLA'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _saving ? null : _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.green,
-                          foregroundColor: AppColors.bg,
-                        ),
-                        child: _saving
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                              )
-                            : const Text('CREA ZONA'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildField(
-    TextEditingController ctrl,
-    String label, {
-    TextInputType? keyboard,
-    String? Function(String?)? validator,
-  }) {
-    return TextFormField(
-      controller: ctrl,
-      keyboardType: keyboard,
-      validator: validator,
-      style: appBody(size: 14, c: AppColors.text),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: appBody(size: 13, c: AppColors.dim),
-        filled: true,
-        fillColor: AppColors.bg,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(7),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(7),
-          borderSide: const BorderSide(color: AppColors.border),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        isDense: true,
-      ),
-    );
-  }
-}
-
-// --- PulsingMarker (invariato) ---
+// --- PulsingMarker ---
 
 class PulsingMarker extends StatefulWidget {
   final Color color;
