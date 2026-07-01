@@ -221,9 +221,12 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
   // --- Creazione zona parcheggio (OP.04) ---
 
   Future<void> _showCreateZoneDialog() async {
+    final center = _mapController.camera.center;
     final created = await showDialog<bool>(
       context: context,
       builder: (ctx) => _CreateZoneDialog(
+        centerLat: center.latitude,
+        centerLng: center.longitude,
         onSave: (name, lat, lng, radiusM, bonus) async {
           await _operatorService.createParkingZone(
             name: name,
@@ -1110,9 +1113,15 @@ class _VehicleActionDialogState extends State<_VehicleActionDialog> {
 // --- Dialog creazione zona parcheggio (OP.04) ---
 
 class _CreateZoneDialog extends StatefulWidget {
+  final double centerLat;
+  final double centerLng;
   final Future<void> Function(String name, double lat, double lng, double radiusM, double bonus) onSave;
 
-  const _CreateZoneDialog({required this.onSave});
+  const _CreateZoneDialog({
+    required this.centerLat,
+    required this.centerLng,
+    required this.onSave,
+  });
 
   @override
   State<_CreateZoneDialog> createState() => _CreateZoneDialogState();
@@ -1121,8 +1130,6 @@ class _CreateZoneDialog extends StatefulWidget {
 class _CreateZoneDialogState extends State<_CreateZoneDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
-  final _latCtrl = TextEditingController();
-  final _lngCtrl = TextEditingController();
   final _radiusCtrl = TextEditingController(text: '100');
   final _bonusCtrl = TextEditingController(text: '0');
   bool _saving = false;
@@ -1131,8 +1138,6 @@ class _CreateZoneDialogState extends State<_CreateZoneDialog> {
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _latCtrl.dispose();
-    _lngCtrl.dispose();
     _radiusCtrl.dispose();
     _bonusCtrl.dispose();
     super.dispose();
@@ -1140,15 +1145,12 @@ class _CreateZoneDialogState extends State<_CreateZoneDialog> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
+    setState(() { _saving = true; _error = null; });
     try {
       await widget.onSave(
         _nameCtrl.text.trim(),
-        double.parse(_latCtrl.text.trim()),
-        double.parse(_lngCtrl.text.trim()),
+        widget.centerLat,
+        widget.centerLng,
         double.parse(_radiusCtrl.text.trim()),
         double.tryParse(_bonusCtrl.text.trim()) ?? 0,
       );
@@ -1166,7 +1168,7 @@ class _CreateZoneDialogState extends State<_CreateZoneDialog> {
       backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 360),
+        constraints: const BoxConstraints(maxWidth: 340),
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Form(
@@ -1176,25 +1178,34 @@ class _CreateZoneDialogState extends State<_CreateZoneDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('Nuova zona parcheggio', style: appCond(size: 20, w: FontWeight.bold)),
-                const SizedBox(height: 20),
-                _buildField(_nameCtrl, 'Nome zona', validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Campo obbligatorio' : null),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildField(_latCtrl, 'Latitudine',
-                          keyboard: TextInputType.number,
-                          validator: (v) => double.tryParse(v ?? '') == null ? 'Numero non valido' : null),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _buildField(_lngCtrl, 'Longitudine',
-                          keyboard: TextInputType.number,
-                          validator: (v) => double.tryParse(v ?? '') == null ? 'Numero non valido' : null),
-                    ),
-                  ],
+                const SizedBox(height: 6),
+                Text(
+                  'Centrata sul punto attuale della mappa',
+                  style: appBody(size: 13, c: AppColors.dim),
                 ),
+                const SizedBox(height: 16),
+                // Coordinate read-only: info sul centro catturato.
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.bg,
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.location_on_rounded, color: AppColors.green, size: 16),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${widget.centerLat.toStringAsFixed(5)}, ${widget.centerLng.toStringAsFixed(5)}',
+                        style: appBody(size: 13, c: AppColors.dim),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _buildField(_nameCtrl, 'Nome zona',
+                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Campo obbligatorio' : null),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -1215,7 +1226,7 @@ class _CreateZoneDialogState extends State<_CreateZoneDialog> {
                   ],
                 ),
                 if (_error != null) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   Text(_error!, style: appBody(size: 12, c: AppColors.red)),
                 ],
                 const SizedBox(height: 20),
