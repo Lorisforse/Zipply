@@ -46,8 +46,9 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
   String _searchQuery = '';
   Timer? _refreshTimer;
 
-  // --- Creazione zona (OP.04): modalita' inline sulla mappa ---
+  // --- Gestione zone (OP.04): creazione inline + cancellazione ---
   bool _creatingZone = false;
+  String? _deletingZoneId; // ID zona in attesa di conferma cancellazione
   LatLng _previewCenter = const LatLng(41.1257, 16.8694);
   double _previewRadiusM = 100;
   bool _savingZone = false;
@@ -236,6 +237,22 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
   }
 
   // --- Creazione zona parcheggio inline (OP.04) ---
+
+  Future<void> _deleteZone(String zoneId) async {
+    try {
+      await _operatorService.deleteParkingZone(zoneId);
+      await _loadParkingZones();
+    } catch (e) {
+      zlog('Errore cancellazione zona: $e', tag: 'WebFleet');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _deletingZoneId = null);
+    }
+  }
 
   void _startCreatingZone() {
     setState(() {
@@ -807,6 +824,97 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
                         ),
                       ],
                     ),
+                    if (_parkingZones.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      const Divider(color: AppColors.border, height: 1),
+                      const SizedBox(height: 6),
+                      ..._parkingZones.map((zone) {
+                        final isConfirming = _deletingZoneId == zone.id;
+                        if (isConfirming) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: AppColors.red.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: AppColors.red.withValues(alpha: 0.30)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Eliminare "${zone.name}"?',
+                                    style: appBody(size: 11.5, c: AppColors.text),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () => setState(() => _deletingZoneId = null),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(vertical: 4),
+                                            decoration: BoxDecoration(
+                                              border: Border.all(color: AppColors.border),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: Text('NO', style: appCond(size: 11, w: FontWeight.w600, c: AppColors.dim)),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: GestureDetector(
+                                          onTap: () => _deleteZone(zone.id),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.red,
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: Text('SI', style: appCond(size: 11, w: FontWeight.w600, c: Colors.white)),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.circle, color: AppColors.green, size: 7),
+                              const SizedBox(width: 7),
+                              Expanded(
+                                child: Text(
+                                  zone.name,
+                                  style: appBody(size: 12, c: AppColors.text),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () => setState(() => _deletingZoneId = zone.id),
+                                child: Padding(
+                                  padding: const EdgeInsets.only(left: 4),
+                                  child: Icon(
+                                    Icons.delete_outline_rounded,
+                                    size: 15,
+                                    color: AppColors.dim.withValues(alpha: 0.70),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
                   ],
                 ),
               ),
@@ -891,17 +999,24 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
                   ),
                   const SizedBox(height: 12),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Expanded(child: _buildZoneField(_zoneNameCtrl, 'Nome zona')),
+                      Expanded(child: _buildLabeledZoneField(_zoneNameCtrl, 'Nome zona', 'es. Piazza Garibaldi')),
                       const SizedBox(width: 10),
                       SizedBox(
-                        width: 100,
-                        child: _buildZoneField(_zoneRadiusCtrl, 'Raggio (m)', keyboard: TextInputType.number),
+                        width: 110,
+                        child: _buildLabeledZoneField(
+                          _zoneRadiusCtrl, 'Raggio', 'in metri',
+                          keyboard: TextInputType.number,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       SizedBox(
-                        width: 100,
-                        child: _buildZoneField(_zoneBonusCtrl, 'Bonus (%)', keyboard: TextInputType.number),
+                        width: 110,
+                        child: _buildLabeledZoneField(
+                          _zoneBonusCtrl, 'Sconto al parcheggio', 'in %',
+                          keyboard: TextInputType.number,
+                        ),
                       ),
                       const SizedBox(width: 16),
                       OutlinedButton(
@@ -939,6 +1054,42 @@ class _FleetScreenState extends State<FleetScreen> with TickerProviderStateMixin
               ),
             ),
           ),
+      ],
+    );
+  }
+
+  Widget _buildLabeledZoneField(
+    TextEditingController ctrl,
+    String label,
+    String hint, {
+    TextInputType? keyboard,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: appCond(size: 11, w: FontWeight.w600, c: AppColors.dim, ls: 0.4)),
+        const SizedBox(height: 4),
+        Container(
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: TextField(
+            controller: ctrl,
+            keyboardType: keyboard,
+            style: appBody(size: 13.5, c: AppColors.text),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: appBody(size: 12, c: AppColors.dim),
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            ),
+          ),
+        ),
       ],
     );
   }
